@@ -270,7 +270,7 @@ def test_reader_uses_logging_error_and_preserves_unknown_records(tmp_path):
     )
     index = read_game_log(path)
     assert not index.is_complete
-    assert index.records_of_type("memory_write") == (unknown,)
+    assert index.records_of_type("future_annotation") == (unknown,)
     assert index.records_at_event(1) == (unknown,)
 
 
