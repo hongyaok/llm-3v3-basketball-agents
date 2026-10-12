@@ -10,7 +10,7 @@ from pydantic import (
 
 from .actions import ActionType, InvalidReason
 from .agent import AgentOutput, CoordinationConfig
-from .memory import CSProposal, MemoryProposal
+from .memory import CSProposal, MemoryCategory, MemoryProposal
 from .messages import Directive
 from .referee import RefereeDecision
 from .state import GameState
@@ -90,6 +90,15 @@ class GameTotals(LogModel):
         return self
 
 
+class InitialMemoryEntry(LogModel):
+    """A team memory item available before the first decision."""
+
+    id: NonEmptyStr
+    opponent: NonEmptyStr
+    category: MemoryCategory
+    tendency: NonEmptyStr
+
+
 # ---------------------------------------------------------------------------
 # Game lifecycle.
 # ---------------------------------------------------------------------------
@@ -121,6 +130,9 @@ class GameStartRecord(LogModel):
 
     initial_state: GameState
     initial_possession_id: NonEmptyStr
+    # None marks legacy/incomplete metadata; an explicit empty list means that
+    # team's initial memory was checked and is empty.
+    initial_memory: dict[Team, list[InitialMemoryEntry]] | None = None
 
     @model_validator(mode="after")
     def validate_initial_metadata(self) -> Self:
@@ -134,6 +146,13 @@ class GameStartRecord(LogModel):
             raise ValueError("A complete game must start at 0-0.")
         if self.initial_state.offense != self.first_possession:
             raise ValueError("Initial offense must match first_possession.")
+        if self.initial_memory is not None:
+            if set(self.initial_memory) != {"A", "B"}:
+                raise ValueError("initial_memory must contain exactly A and B.")
+            for team, entries in self.initial_memory.items():
+                ids = [entry.id for entry in entries]
+                if len(ids) != len(set(ids)):
+                    raise ValueError(f"Initial memory IDs for team {team} must be unique.")
         return self
 
 
@@ -230,8 +249,7 @@ class DecisionRecord(LogModel):
 
 
 # ---------------------------------------------------------------------------
-# Existing coordination records.
-# Their detailed metric semantics will be extended in a later WS6 stage.
+# Coordination records.
 # ---------------------------------------------------------------------------
 
 
@@ -272,6 +290,30 @@ class MemoryProposalRecord(LogModel):
     confidence_after: int | None = None
 
 
+class MemoryWriteRecord(LogModel):
+    """An accepted memory-store mutation and its decision-time visibility."""
+
+    record_type: Literal["memory_write"] = "memory_write"
+    event_idx: EventIndex
+    team: Team
+    memory_id: NonEmptyStr
+    opponent: NonEmptyStr
+    category: MemoryCategory
+    tendency: NonEmptyStr
+    visible_at: EventIndex
+    evicted_ids: list[NonEmptyStr] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_visibility(self) -> Self:
+        if self.visible_at <= self.event_idx:
+            raise ValueError("A memory write must become visible after its write event.")
+        if self.memory_id in self.evicted_ids:
+            raise ValueError("A memory write cannot evict the entry it just wrote.")
+        if len(self.evicted_ids) != len(set(self.evicted_ids)):
+            raise ValueError("evicted_ids must not contain duplicates.")
+        return self
+
+
 class CSProposalRecord(LogModel):
     record_type: Literal["cs_proposal"] = "cs_proposal"
     event_idx: EventIndex
@@ -281,6 +323,26 @@ class CSProposalRecord(LogModel):
     accepted: bool
     key: str | None = None
     merged: bool = False
+
+
+class CSWriteRecord(LogModel):
+    """An accepted counter-strategy entry and when agents can first use it."""
+
+    record_type: Literal["cs_write"] = "cs_write"
+    event_idx: EventIndex
+    team: Team
+    key: NonEmptyStr
+    side: Literal["offense", "defense"]
+    opponent_strategy: NonEmptyStr
+    counter_strategy: NonEmptyStr
+    merged: bool = False
+    visible_at: EventIndex
+
+    @model_validator(mode="after")
+    def validate_visibility(self) -> Self:
+        if self.visible_at <= self.event_idx:
+            raise ValueError("A CS write must become visible after its write event.")
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +357,9 @@ class ResolutionRecord(LogModel):
     actions: dict[str, ActionType]
     action_targets: dict[str, str | None]
     outcomes: dict[str, Any] = Field(default_factory=dict)
+    # When present, this must identify the opponents involved in each player's
+    # action. None preserves compatibility with logs that predate this evidence.
+    involved_opponents: dict[str, list[NonEmptyStr]] | None = None
     model_terms: dict[str, Any] = Field(default_factory=dict)
     rng_draws: dict[str, Any] = Field(default_factory=dict)
 
@@ -310,6 +375,14 @@ class ResolutionRecord(LogModel):
     def validate_resolution_fields(self) -> Self:
         if self.actions.keys() != self.action_targets.keys():
             raise ValueError("Actions and targets must cover the same players.")
+        if self.involved_opponents is not None:
+            if self.involved_opponents.keys() != self.actions.keys():
+                raise ValueError("involved_opponents must cover every acting player.")
+            for player, opponents in self.involved_opponents.items():
+                if len(opponents) != len(set(opponents)):
+                    raise ValueError(f"Involved opponents for {player} must be unique.")
+                if any(opponent[:1] == player[:1] for opponent in opponents):
+                    raise ValueError(f"Involved opponents for {player} must be on the other team.")
 
         if self.game_over:
             if self.game_end_reason is None:
@@ -412,7 +485,9 @@ LogRecord = Annotated[
     | MessageRecord
     | CaptainCallRecord
     | MemoryProposalRecord
+    | MemoryWriteRecord
     | CSProposalRecord
+    | CSWriteRecord
     | ResolutionRecord
     | RefereeRecord
     | StateRecord

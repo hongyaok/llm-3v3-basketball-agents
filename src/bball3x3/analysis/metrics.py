@@ -12,11 +12,13 @@ from pydantic import BaseModel
 from bball3x3.schemas.log import (
     CaptainCallRecord,
     CSProposalRecord,
+    CSWriteRecord,
     DecisionRecord,
     GameEndRecord,
     GameStartRecord,
     InvariantViolationRecord,
     MemoryProposalRecord,
+    MemoryWriteRecord,
     MessageRecord,
     PossessionEndRecord,
     RefereeRecord,
@@ -324,9 +326,8 @@ def _visible_at(data: Mapping[str, Any], event_idx: int) -> int:
 def _cs_availability(records: Sequence[LogRecord]) -> dict[Team, dict[str, int]]:
     available: dict[Team, dict[str, int]] = {team: {} for team in _TEAMS}
     for record in records:
-        if isinstance(record, CSProposalRecord):
-            if record.accepted and record.key:
-                available[record.team].setdefault(record.key, record.event_idx + 1)
+        if isinstance(record, CSWriteRecord):
+            available[record.team].setdefault(record.key, record.visible_at)
             continue
         if record_type(record) != "cs_write":
             continue
@@ -336,6 +337,12 @@ def _cs_availability(records: Sequence[LogRecord]) -> dict[Team, dict[str, int]]
         event_idx = record_event_idx(record)
         if team is not None and isinstance(key, str) and key and event_idx is not None:
             available[team].setdefault(key, _visible_at(data, event_idx))
+
+    # Proposal records predate explicit write records. Use them as a fallback
+    # only when the actual store mutation is absent from this log.
+    for record in records:
+        if isinstance(record, CSProposalRecord) and record.accepted and record.key:
+            available[record.team].setdefault(record.key, record.event_idx + 1)
     return available
 
 
@@ -367,6 +374,7 @@ def _cssr(
 def _normalise_initial_memory(
     known_memory_ids: Mapping[str, Iterable[str]] | None,
     memory_opponents: Mapping[str, Mapping[str, str]] | None,
+    start: GameStartRecord | None,
 ) -> tuple[
     dict[Team, dict[str, int]],
     dict[Team, dict[str, int]],
@@ -376,13 +384,22 @@ def _normalise_initial_memory(
     availability: dict[Team, dict[str, int]] = {team: {} for team in _TEAMS}
     unavailable_from: dict[Team, dict[str, int]] = {team: {} for team in _TEAMS}
     opponents: dict[Team, dict[str, str]] = {team: {} for team in _TEAMS}
-    complete = {team: known_memory_ids is not None and team in known_memory_ids for team in _TEAMS}
+    complete = {team: False for team in _TEAMS}
+
+    if start is not None and start.initial_memory is not None:
+        for team in _TEAMS:
+            complete[team] = True
+            for entry in start.initial_memory[team]:
+                availability[team][entry.id] = 0
+                opponents[team][entry.id] = entry.opponent
 
     if known_memory_ids is not None:
         for team in _TEAMS:
+            if team in known_memory_ids:
+                complete[team] = True
             for memory_id in known_memory_ids.get(team, ()):
                 if isinstance(memory_id, str) and memory_id:
-                    availability[team][memory_id] = 0
+                    availability[team].setdefault(memory_id, 0)
     if memory_opponents is not None:
         for team in _TEAMS:
             for memory_id, opponent in memory_opponents.get(team, {}).items():
@@ -397,14 +414,14 @@ def _add_memory_writes(
     unavailable_from: dict[Team, dict[str, int]],
     opponents: dict[Team, dict[str, str]],
 ) -> None:
+    explicit_ids: set[tuple[Team, str]] = set()
     for record in records:
-        if isinstance(record, MemoryProposalRecord):
-            if not record.accepted:
-                continue
-            memory_ids = [value for value in (record.new_id, record.merged_into) if value]
-            for memory_id in memory_ids:
-                availability[record.team].setdefault(memory_id, record.event_idx + 1)
-                opponents[record.team][memory_id] = record.proposal.opponent
+        if isinstance(record, MemoryWriteRecord):
+            explicit_ids.add((record.team, record.memory_id))
+            availability[record.team].setdefault(record.memory_id, record.visible_at)
+            opponents[record.team][record.memory_id] = record.opponent
+            for evicted_id in record.evicted_ids:
+                unavailable_from[record.team][evicted_id] = record.visible_at
             continue
         if record_type(record) != "memory_write":
             continue
@@ -415,6 +432,7 @@ def _add_memory_writes(
         opponent = data.get("opponent")
         if team is None or event_idx is None or not isinstance(memory_id, str) or not memory_id:
             continue
+        explicit_ids.add((team, memory_id))
         availability[team].setdefault(memory_id, _visible_at(data, event_idx))
         if isinstance(opponent, str):
             opponents[team][memory_id] = opponent
@@ -426,19 +444,33 @@ def _add_memory_writes(
                 if isinstance(evicted_id, str) and evicted_id:
                     unavailable_from[team][evicted_id] = _visible_at(data, event_idx)
 
+    # Accepted proposals are used as a compatibility fallback for older logs
+    # that recorded the mutation only on the proposal record.
+    for record in records:
+        if not isinstance(record, MemoryProposalRecord) or not record.accepted:
+            continue
+        for memory_id in (record.new_id, record.merged_into):
+            if memory_id and (record.team, memory_id) not in explicit_ids:
+                availability[record.team].setdefault(memory_id, record.event_idx + 1)
+                opponents[record.team][memory_id] = record.proposal.opponent
+
 
 def _explicit_involved_opponents(
     decision: DecisionRecord,
     resolution: ResolutionRecord | None,
 ) -> tuple[set[str], bool]:
+    if resolution is None:
+        return set(), False
+    if resolution.involved_opponents is not None:
+        # The resolver's record describes the action that actually ran, so it
+        # takes precedence over the agent's possibly remapped proposal.
+        return set(resolution.involved_opponents[decision.player]), True
+
     involved: set[str] = set()
     own_team = decision.team
     target = decision.parsed_output.target if decision.parsed_output is not None else None
     if isinstance(target, str) and target[:1] in _TEAMS and target[:1] != own_team:
         involved.add(target)
-
-    if resolution is None:
-        return involved, False
     player_outcome = resolution.outcomes.get(decision.player)
     if not isinstance(player_outcome, Mapping):
         return involved, False
@@ -460,9 +492,10 @@ def _memory_metrics(
     decision_evidence: Mapping[Team, bool],
     known_memory_ids: Mapping[str, Iterable[str]] | None,
     memory_opponents: Mapping[str, Mapping[str, str]] | None,
+    start: GameStartRecord | None,
 ) -> tuple[dict[str, RateMetric], dict[str, RateMetric], dict[str, bool], dict[str, bool]]:
     availability, unavailable_from, opponents, validation_complete = (
-        _normalise_initial_memory(known_memory_ids, memory_opponents)
+        _normalise_initial_memory(known_memory_ids, memory_opponents, start)
     )
     _add_memory_writes(records, availability, unavailable_from, opponents)
     resolutions = {
@@ -472,8 +505,7 @@ def _memory_metrics(
     grounded: defaultdict[Team, int] = defaultdict(int)
     grounding_complete = {
         team: validation_complete[team]
-        and memory_opponents is not None
-        and team in memory_opponents
+        and all(memory_id in opponents[team] for memory_id in availability[team])
         for team in _TEAMS
     }
 
@@ -535,8 +567,8 @@ def compute_game_metrics(
 
     ``window=1`` checks the decision at message delivery. ``window=2`` counts
     an addressed opportunity as aligned when either of the next two decisions
-    matches at least one directive. Initial memory inputs must be team-scoped,
-    for example ``{"A": {"M01"}, "B": {"M01"}}``.
+    matches at least one directive. Initial memory is read from game_start when
+    present; team-scoped mappings can supply it for older logs.
     """
     if window not in (1, 2):
         raise ValueError("window must be 1 or 2")
@@ -552,9 +584,14 @@ def compute_game_metrics(
 
     points: defaultdict[Team, int] = defaultdict(int)
     possessions: defaultdict[Team, int] = defaultdict(int)
+    possession_ids: set[str] = set()
+    possession_ids_unique = True
     for record in items:
         if not isinstance(record, PossessionEndRecord):
             continue
+        if record.possession_id in possession_ids:
+            possession_ids_unique = False
+        possession_ids.add(record.possession_id)
         possessions[record.team] += 1
         for team in _TEAMS:
             points[team] += record.points_by_team[team]
@@ -563,7 +600,9 @@ def compute_game_metrics(
         evidence = end is not None
         if end is not None:
             evidence = (
-                points[team] == end.final_score[team]
+                possession_ids_unique
+                and len(possession_ids) == sum(possessions.values())
+                and points[team] == end.final_score[team]
                 and possessions[team] == end.totals.possessions_by_team[team]
             )
         ppp[team] = _rate(
@@ -584,6 +623,7 @@ def compute_game_metrics(
         decision_evidence,
         known_memory_ids,
         memory_opponents,
+        start,
     )
 
     invalid_counts: defaultdict[Team, int] = defaultdict(int)

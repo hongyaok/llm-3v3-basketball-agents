@@ -1,6 +1,6 @@
 # WS6 Event Log Contract: First Delivery
 
-**Status:** proposed contract for implementation and team review; not yet implemented in the Python schemas.
+**Status:** core schemas and JSONL writer/reader are implemented; this contract remains open for team review and producer integration.
 
 **Scope:** define the records needed to compute points per possession (PPP), invalid action rate (IAR), and state inconsistency rate (SIR) from one saved game log.
 
@@ -83,6 +83,7 @@ Unless marked optional, the fields below are required for this contract. Existin
 | `code_commit` | Commit string, or explicit `null` if unavailable; record a dirty-working-tree indicator in the config/run metadata |
 | `initial_state` | Full `GameState`, index 0, including both initial scores of 0 and all six players |
 | `initial_possession_id` | Identifier of the possession owned by `first_possession` |
+| `initial_memory` | `null` if unavailable; otherwise both team keys map to entries with `id`, `opponent`, `category`, and `tendency`. An explicit empty list means that team's starting memory was checked and empty |
 
 Hash the exact saved effective config using a documented canonical JSON encoding (sorted keys, compact separators, UTF-8) and SHA-256. Never include API key values. Configuration hashes alone cannot reconstruct the run.
 
@@ -122,6 +123,7 @@ Hash the exact saved effective config using a documented canonical JSON encoding
 | `actions` | Existing map of all six player IDs to executed action names; agrees with decisions |
 | `action_targets` | Map of those players to executed targets or `null` |
 | `outcomes` | Existing per-action outcome details; useful for transcripts and diagnostics |
+| `involved_opponents` | Optional map from every acting player ID to the opponent IDs involved in that executed action. Needed to validate grounded MAUR; `null` marks older/incomplete evidence |
 | `model_terms`, `rng_draws` | Existing model inputs/probabilities and random draws actually used; empty when none |
 | `possession_before`, `possession_after` | Objects `{possession_id, team}`. Before is required; after is `null` on normal game termination |
 | `scoring_events` | Ordered list of `{team, points, source, possession_id}`; positive integer points, source e.g. `FIELD_GOAL` or `FREE_THROW`; empty list when no points |
@@ -189,6 +191,14 @@ Required entries in `totals`:
 These are cross-checks, not substitutes for deriving counts from the underlying records. The final score agrees with the last state and the sum of scoring events. A normal `game_end` means the game finished, not that it had zero invariant violations.
 
 An aborted run has no normal `game_end`. Closing the file or leaving a logger context manager does not create one automatically.
+
+### 3.8 `memory_write`
+
+**Purpose:** record a committed shared-memory mutation separately from the agent proposal. Fields are `event_idx`, `team`, `memory_id`, `opponent`, `category`, `tendency`, `visible_at`, and `evicted_ids`. `visible_at` must be later than the write event; evicted IDs stop being valid references at that event. Initial entries are recorded in `game_start.initial_memory`.
+
+### 3.9 `cs_write`
+
+**Purpose:** record a committed counter-strategy entry separately from a proposal. Fields are `event_idx`, `team`, `key`, `side`, `opponent_strategy`, `counter_strategy`, `merged`, and `visible_at`. `visible_at` must be later than the write event, and a tactic cannot cite the key before that event.
 
 ## 4. Possession counting rules
 
@@ -405,4 +415,4 @@ For the first implementation, test the worked example plus separate cases for fi
 
 ## 9. Deferred extensions
 
-Later stages will extend this contract for MAAR, CCAR, CSSR, MAUR and transcripts: observation text, message/call identities and delivery, initial memory, memory/CS writes and evictions, decision-time visibility, and per-action involved opponents. Their existing record types remain part of the project, but their full semantics are outside this first PPP/IAR/SIR delivery. This document does not claim that the three metrics specified here complete all of WS6.
+The repository now includes typed initial-memory, memory-write, CS-write, and per-action opponent-involvement fields as groundwork for coordination metrics. Full coordination semantics and transcripts still need a follow-up contract: observation text, stable message/call IDs, and captain-call identity across `maintain=true`. This first delivery defines PPP/IAR/SIR as its core and does not claim that those metrics complete all of WS6.

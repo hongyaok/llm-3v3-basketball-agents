@@ -257,7 +257,7 @@ def test_reader_uses_logging_error_and_preserves_unknown_records(tmp_path):
     assert LogReadError is LoggingReadError
     start = _start()
     unknown = {
-        "record_type": "memory_write",
+        "record_type": "future_annotation",
         "event_idx": 1,
         "team": "A",
         "memory_id": "M02",
@@ -298,7 +298,7 @@ def test_reader_rejects_records_after_game_end(tmp_path):
     path.write_text(
         "\n".join(record.model_dump_json() for record in records)
         + "\n"
-        + json.dumps({"record_type": "memory_write", "event_idx": 4}),
+        + json.dumps({"record_type": "future_annotation", "event_idx": 4}),
         encoding="utf-8",
     )
     with pytest.raises(LogReadError, match="after game_end"):

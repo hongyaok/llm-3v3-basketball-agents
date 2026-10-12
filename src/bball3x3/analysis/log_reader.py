@@ -1,54 +1,23 @@
 """Read and index per-game JSONL event logs.
 
-Known record types are validated against ``schemas.log``. Unknown record types
-are retained as dictionaries so logs containing newer records such as
-``memory_write`` and ``cs_write`` remain inspectable.
+Known record types are validated against ``schemas.log``. Unknown future record
+types are retained as dictionaries for forward-compatible inspection.
 """
 
 from __future__ import annotations
 
-import json
-import math
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NoReturn, TypeAlias
+from typing import Any, TypeAlias
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from bball3x3.logging.event_log import LogReadError
-from bball3x3.schemas.log import (
-    CaptainCallRecord,
-    CSProposalRecord,
-    DecisionRecord,
-    GameEndRecord,
-    GameStartRecord,
-    InvariantViolationRecord,
-    MemoryProposalRecord,
-    MessageRecord,
-    PossessionEndRecord,
-    RefereeRecord,
-    ResolutionRecord,
-    StateRecord,
-)
+from bball3x3.logging.event_log import LogReadError, read_events
+from bball3x3.schemas.log import GameEndRecord, GameStartRecord
 
 LogRecord: TypeAlias = BaseModel | dict[str, Any]
-
-_RECORD_MODELS: dict[str, type[BaseModel]] = {
-    "game_start": GameStartRecord,
-    "decision": DecisionRecord,
-    "message": MessageRecord,
-    "captain_call": CaptainCallRecord,
-    "memory_proposal": MemoryProposalRecord,
-    "cs_proposal": CSProposalRecord,
-    "resolution": ResolutionRecord,
-    "referee": RefereeRecord,
-    "state": StateRecord,
-    "invariant_violation": InvariantViolationRecord,
-    "possession_end": PossessionEndRecord,
-    "game_end": GameEndRecord,
-}
 
 
 def _record_mapping(record: LogRecord) -> Mapping[str, Any]:
@@ -78,56 +47,6 @@ def record_event_idx(record: LogRecord) -> int | None:
     return event_idx
 
 
-def _reject_constant(value: str) -> NoReturn:
-    raise ValueError(f"non-finite JSON number {value!r} is not allowed")
-
-
-def _finite_float(value: str) -> float:
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError(f"JSON number {value!r} exceeds the finite float range")
-    return number
-
-
-def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate JSON key {key!r}")
-        result[key] = value
-    return result
-
-
-def _parse_record(value: Any, source: Path, line_number: int) -> LogRecord:
-    if not isinstance(value, dict):
-        raise LogReadError(source, line_number, "Each JSONL record must be a JSON object.")
-
-    kind = value.get("record_type")
-    if not isinstance(kind, str) or not kind:
-        raise LogReadError(source, line_number, "Missing non-empty string 'record_type'.")
-
-    model = _RECORD_MODELS.get(kind)
-    if model is None:
-        record: LogRecord = value
-    else:
-        try:
-            record = model.model_validate(value)
-        except ValidationError as exc:
-            details = "; ".join(
-                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
-                for error in exc.errors()
-            )
-            raise LogReadError(
-                source, line_number, f"Invalid {kind!r} record ({details})."
-            ) from exc
-
-    try:
-        record_event_idx(record)
-    except ValueError as exc:
-        raise LogReadError(source, line_number, str(exc)) from exc
-    return record
-
-
 def iter_jsonl_records(path: str | Path) -> Iterator[LogRecord]:
     """Yield a valid complete game or valid unfinished prefix in file order.
 
@@ -136,37 +55,7 @@ def iter_jsonl_records(path: str | Path) -> Iterator[LogRecord]:
     source path and one-based line number. A missing ``game_end`` is allowed;
     an empty file is not a game prefix.
     """
-    source = Path(path)
-    started = False
-    ended = False
-    line_number = 0
-
-    with source.open("rb") as stream:
-        for line_number, raw_line in enumerate(stream, start=1):
-            try:
-                value = json.loads(
-                    raw_line.decode("utf-8"),
-                    parse_constant=_reject_constant,
-                    parse_float=_finite_float,
-                    object_pairs_hook=_unique_object,
-                )
-            except (UnicodeDecodeError, ValueError) as exc:
-                raise LogReadError(source, line_number, str(exc)) from exc
-
-            record = _parse_record(value, source, line_number)
-            if ended:
-                raise LogReadError(source, line_number, "No records are allowed after game_end.")
-            if not started and not isinstance(record, GameStartRecord):
-                raise LogReadError(source, line_number, "The first record must be game_start.")
-            if started and isinstance(record, GameStartRecord):
-                raise LogReadError(source, line_number, "Only one game_start is allowed per file.")
-
-            started = True
-            ended = isinstance(record, GameEndRecord)
-            yield record
-
-    if not started:
-        raise LogReadError(source, max(1, line_number), "Empty log; game_start is missing.")
+    yield from read_events(path, require_complete=False, allow_unknown=True)
 
 
 @dataclass

@@ -9,13 +9,32 @@ import math
 from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
-from typing import Any, NoReturn, Self
+from typing import Any, NoReturn, Self, TypeAlias
 
 from pydantic import TypeAdapter
 
 from bball3x3.schemas.log import GameEndRecord, GameStartRecord, LogModel, LogRecord
 
 _RECORD_ADAPTER = TypeAdapter(LogRecord)
+_KNOWN_RECORD_TYPES = frozenset(
+    {
+        "game_start",
+        "decision",
+        "message",
+        "captain_call",
+        "memory_proposal",
+        "memory_write",
+        "cs_proposal",
+        "cs_write",
+        "resolution",
+        "referee",
+        "state",
+        "invariant_violation",
+        "possession_end",
+        "game_end",
+    }
+)
+ReadRecord: TypeAlias = LogRecord | dict[str, Any]
 
 
 class LogReadError(ValueError):
@@ -31,7 +50,7 @@ class IncompleteLogError(LogReadError):
     """The file is empty or ended before a normal game_end record."""
 
 
-def _check_boundaries(record: LogRecord, started: bool, ended: bool) -> None:
+def _check_boundaries(record: ReadRecord, started: bool, ended: bool) -> None:
     if ended:
         raise ValueError("No records are allowed after game_end.")
     if not started and not isinstance(record, GameStartRecord):
@@ -136,13 +155,19 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def read_events(path: str | Path, *, require_complete: bool = True) -> Iterator[LogRecord]:
+def read_events(
+    path: str | Path,
+    *,
+    require_complete: bool = True,
+    allow_unknown: bool = False,
+) -> Iterator[ReadRecord]:
     """Yield typed records, raising LogReadError for bad input with line context.
 
     Consume the iterator to EOF to check the complete file. By default a missing
     game_end raises IncompleteLogError. For inspection of a still-running or
-    interrupted game, pass require_complete=False; malformed/truncated JSON,
-    blank lines and unknown record types are still errors, never skipped.
+    interrupted game, pass require_complete=False. Unknown record types are
+    rejected by default; with allow_unknown=True they are preserved as
+    dictionaries, after basic record and event-index checks.
 
     A final valid JSON object without a trailing newline is accepted. Ordinary
     file-access errors propagate unchanged. Whole-game metric validation is a
@@ -164,7 +189,24 @@ def read_events(path: str | Path, *, require_complete: bool = True) -> Iterator[
                     parse_float=_finite_float,
                     object_pairs_hook=_unique_object,
                 )
-                record = _RECORD_ADAPTER.validate_python(data)
+                if (
+                    allow_unknown
+                    and isinstance(data, dict)
+                    and isinstance(data.get("record_type"), str)
+                    and data["record_type"] not in _KNOWN_RECORD_TYPES
+                ):
+                    if not data["record_type"]:
+                        raise ValueError("Unknown record_type must be a non-empty string.")
+                    event_idx = data.get("event_idx")
+                    if event_idx is not None and (
+                        isinstance(event_idx, bool)
+                        or not isinstance(event_idx, int)
+                        or event_idx < 1
+                    ):
+                        raise ValueError("Unknown record event_idx must be a positive integer.")
+                    record: ReadRecord = data
+                else:
+                    record = _RECORD_ADAPTER.validate_python(data)
                 _check_boundaries(record, started, ended)
             except ValueError as exc:
                 raise LogReadError(log_path, line_number, str(exc)) from exc
