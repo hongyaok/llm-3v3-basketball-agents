@@ -6,13 +6,16 @@ contact -> rules -> fatigue -> invariants) so WS1 can close with
 ``heuristic full games, SIR = 0`` before the asyncio runner exists.
 """
 
+from collections.abc import Callable
+
+from bball3x3.agents.base import BasePlayer
 from bball3x3.agents.heuristic_player import HeuristicPlayer
 from bball3x3.config import SimulationConfig, load_roster_config
 from bball3x3.engine.abilities import build_abilities_map
 from bball3x3.engine.actions import remap_invalid_action
 from bball3x3.engine.clock import advance_action_clock, is_shot_clock_violation
 from bball3x3.engine.contact import detect_contact
-from bball3x3.engine.court import Court
+from bball3x3.engine.court import ZONES, Court
 from bball3x3.engine.invariants import collect_violations
 from bball3x3.engine.movement import movement_label, speed_label
 from bball3x3.engine.resolvers import (
@@ -39,7 +42,7 @@ from bball3x3.engine.rules import (
 )
 from bball3x3.engine.state import create_initial_state, set_ball_holder
 from bball3x3.schemas.actions import ActionProposal
-from bball3x3.schemas.state import Abilities
+from bball3x3.schemas.state import Abilities, GameState
 
 
 def _clamp(pos: tuple[int, int], court: Court) -> tuple[int, int]:
@@ -67,8 +70,11 @@ def play_heuristic_game(
     config: SimulationConfig | None = None,
     max_events: int = 2000,
     roster_path: str | None = None,
+    start_state: GameState | None = None,
+    agent_factory: Callable[[str], BasePlayer] | None = None,
+    collect_history: bool = False,
 ) -> dict:
-    """Play one heuristic-vs-heuristic game. Returns summary stats."""
+    """Play one full game (heuristic agents unless a factory is given)."""
     config = config or SimulationConfig()
     court = Court(config.court)
     rng = GameRNG.from_seed(seed)
@@ -79,19 +85,30 @@ def play_heuristic_game(
         except OSError:
             abilities_map = None
 
-    state = create_initial_state(config, rng)
-    agents = {pid: HeuristicPlayer(pid, config) for pid in state.players}
+    state = start_state if start_state is not None else create_initial_state(config, rng)
+    if agent_factory is None:
+
+        def agent_factory(pid: str) -> HeuristicPlayer:
+            return HeuristicPlayer(pid, config)
+
+    agents = {pid: agent_factory(pid) for pid in state.players}
     invalid = 0
     total_proposals = 0
     violations: list[dict] = []
+    possessions = {state.offense: 1, other_team(state.offense): 0}
+    shots_1pt_att = shots_1pt_made = 0
+    shots_2pt_att = shots_2pt_made = 0
     screen_advantage = False
     after_drive = False
     after_pass = False
     ot_baseline: dict[str, int] | None = None
     events = 0
+    history: list[GameState] = []
 
     while events < max_events:
         prev = state.model_copy(deep=True)
+        if collect_history:
+            history.append(prev)
         proposals: dict[str, ActionProposal] = {}
         legalized: dict[str, ActionProposal] = {}
         for pid, agent in agents.items():
@@ -143,6 +160,8 @@ def play_heuristic_game(
                 else "DEFENSIVE_REBOUND",
             }
             violations.extend(collect_violations(prev, state, event, court, config))
+            if state.offense != prev.offense:
+                possessions[state.offense] = possessions.get(state.offense, 0) + 1
             events += 1
             if _finished(state, config, ot_baseline):
                 break
@@ -190,6 +209,13 @@ def play_heuristic_game(
                 after_pass_reception=after_pass,
                 screen_advantage=screen_advantage,
             )
+            shot_value = court.shot_value(state.players[holder].pos)
+            if shot_value == 2:
+                shots_2pt_att += 1
+                shots_2pt_made += 1 if outcome["made"] else 0
+            else:
+                shots_1pt_att += 1
+                shots_1pt_made += 1 if outcome["made"] else 0
             if outcome["made"]:
                 scoring = state.offense
                 points = outcome["points"]
@@ -324,12 +350,55 @@ def play_heuristic_game(
                 pos = state.players[pid].pos
                 state.players[pid].prev_pos = pos
                 state.players[pid].pos = _step_toward(pos, court.basket, 1, court)
+            elif act == "POP":
+                # Pick-and-pop: one step away from the basket for spacing.
+                pos = state.players[pid].pos
+                away = (
+                    2 * pos[0] - court.basket[0],
+                    2 * pos[1] - court.basket[1],
+                )
+                state.players[pid].prev_pos = pos
+                state.players[pid].pos = _step_toward(pos, away, 1, court)
             elif act == "SPOT_UP":
                 state.players[pid].prev_pos = state.players[pid].pos
 
         # The ball follows whoever holds it after passes and turnovers.
         if state.ball.status == "HELD" and state.ball.holder in state.players:
             state.ball.pos = state.players[state.ball.holder].pos
+
+        # Defensive rotation: defenders step toward their assignment, so
+        # openness reflects pressure instead of frozen starting spots.
+        # Targets use previous positions: within one event, no defender
+        # sees where the offense moved this event (no peeking).
+        current_holder = (
+            state.ball.holder if state.ball.status == "HELD" else None
+        )
+        for pid, act in actions.items():
+            player = state.players[pid]
+            if player.has_ball or player.team == state.offense:
+                continue
+            if act in (
+                "DEFEND",
+                "CONTEST",
+                "STEAL_ATTEMPT",
+                "DENY",
+                "DOUBLE_TEAM",
+                "SWITCH",
+            ):
+                matchup = state.matchups.get(pid)
+                if matchup in state.players:
+                    target = state.players[matchup].prev_pos
+                elif current_holder in state.players:
+                    target = state.players[current_holder].prev_pos
+                else:
+                    target = None
+            elif act == "HELP_PAINT":
+                target = ZONES["PAINT"]
+            else:
+                target = None
+            if target is not None and player.pos != target:
+                player.prev_pos = player.pos
+                player.pos = _step_toward(player.pos, target, 1, court)
 
         for pid, player in state.players.items():
             player.movement = movement_label(player.prev_pos, player.pos)
@@ -369,6 +438,8 @@ def play_heuristic_game(
             )
 
         violations.extend(collect_violations(prev, state, event, court, config))
+        if state.offense != prev.offense:
+            possessions[state.offense] = possessions.get(state.offense, 0) + 1
         events += 1
 
         if state.phase == "LIVE" and is_tied_at_expiry(state):
@@ -376,6 +447,9 @@ def play_heuristic_game(
             continue
         if _finished(state, config, ot_baseline):
             break
+
+    if collect_history:
+        history.append(state.model_copy(deep=True))
 
     return {
         "events": events,
@@ -386,6 +460,11 @@ def play_heuristic_game(
         "invalid_actions": invalid,
         "total_proposals": total_proposals,
         "iar": invalid / max(total_proposals, 1),
+        "possessions": dict(possessions),
+        "shots_1pt": {"att": shots_1pt_att, "made": shots_1pt_made},
+        "shots_2pt": {"att": shots_2pt_att, "made": shots_2pt_made},
+        "overtime_reached": ot_baseline is not None,
+        "history": history,
         "final_state": state,
     }
 

@@ -24,6 +24,7 @@ DEFAULT_PASS_MODEL = {
     "b_distance": -0.15,
     "b_lane_defender": -1.5,
     "b_def_intercept": 0.1,
+    "lane_width_cells": 1.0,
 }
 
 DEFAULT_DRIVE_MODEL = {
@@ -171,7 +172,10 @@ def resolve_pass(
     distance_m = court.distance(
         state.players[passer_id].pos, state.players[target_id].pos
     )
-    in_lane = lane_defenders(state, passer_id, target_id)
+    in_lane = lane_defenders(
+        state, passer_id, target_id,
+        lane_width_cells=float(params.get("lane_width_cells", 1.0)),
+    )
     lane_count = len(in_lane)
     avg_lane_def = 5.0
     if in_lane:

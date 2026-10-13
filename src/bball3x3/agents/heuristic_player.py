@@ -10,6 +10,8 @@ from bball3x3.agents.base import (
 from bball3x3.config import SimulationConfig
 from bball3x3.engine.actions import get_legal_actions
 from bball3x3.engine.court import Court
+from bball3x3.engine.resolvers import lane_defenders
+from bball3x3.engine.shot_quality import compute_contest
 from bball3x3.schemas.actions import ActionProposal
 from bball3x3.schemas.state import GameState
 
@@ -38,6 +40,9 @@ class HeuristicPlayer(BasePlayer):
         super().__init__(player_id)
         self.config = config or SimulationConfig()
         self.court = Court(self.config.court)
+        self.lane_width = float(
+            (self.config.pass_model or {}).get("lane_width_cells", 1.0)
+        )
 
     def decide(self, state: GameState, **kwargs) -> ActionProposal:
         _ = kwargs
@@ -67,25 +72,58 @@ class HeuristicPlayer(BasePlayer):
             if "SHOOT" in legal:
                 return ActionProposal(player_id=self.player_id, action="SHOOT")
             return self._safe_pass(state, legal)
-        if nearest_d >= OPEN_DIST_M and "SHOOT" in legal:
+        contest_est = compute_contest(distance_m=nearest_d, config=self.config)
+        if contest_est < 0.5 and "SHOOT" in legal:
             return ActionProposal(player_id=self.player_id, action="SHOOT")
-        open_mate = self._most_open_teammate(state)
-        if open_mate and "PASS" in legal:
-            _, mate_d = _nearest_opp_dist(state, open_mate)
-            if mate_d >= OPEN_DIST_M or nearest_d < CONTEST_DIST_M:
-                return ActionProposal(
-                    player_id=self.player_id, action="PASS", target=open_mate
-                )
-        if "DRIVE" in legal and nearest_d >= 1.5:
+        clear_mate = self._clearest_lane_mate(state)
+        if clear_mate is not None and "PASS" in legal:
+            return ActionProposal(
+                player_id=self.player_id, action="PASS", target=clear_mate
+            )
+        if "DRIVE" in legal and nearest_d >= 1.0:
             return ActionProposal(player_id=self.player_id, action="DRIVE")
-        if "PASS" in legal:
-            return self._safe_pass(state, legal)
+        # No clear lane and no drive: hold rather than donate possession.
+        # The shot clock forces action at <= 2 s (handled above).
         return ActionProposal(player_id=self.player_id, action="HOLD")
+
+    def _clearest_lane_mate(self, state: GameState) -> str | None:
+        """Return the most open teammate whose passing lane is empty."""
+        best, best_key = None, None
+        for mate in teammates(state, self.player_id):
+            lane = len(
+                lane_defenders(
+                    state, self.player_id, mate,
+                    lane_width_cells=self.lane_width,
+                )
+            )
+            _, openness = _nearest_opp_dist(state, mate)
+            key = (lane, -openness)
+            if best_key is None or key < best_key:
+                best, best_key = mate, key
+        if best is not None and len(
+            lane_defenders(
+                state, self.player_id, best, lane_width_cells=self.lane_width
+            )
+        ) == 0:
+            return best
+        return None
 
     def _safe_pass(self, state: GameState, legal: set[str]) -> ActionProposal:
         if "PASS" not in legal:
             return ActionProposal(player_id=self.player_id, action="HOLD")
-        mate = self._most_open_teammate(state) or (
+        best, best_key = None, None
+        for mate in teammates(state, self.player_id):
+            lane = len(
+                lane_defenders(
+                    state, self.player_id, mate,
+                    lane_width_cells=self.lane_width,
+                )
+            )
+            _, openness = _nearest_opp_dist(state, mate)
+            key = (lane, -openness)
+            if best_key is None or key < best_key:
+                best, best_key = mate, key
+        mate = best or (
             teammates(state, self.player_id)[0]
             if teammates(state, self.player_id)
             else None
@@ -127,10 +165,17 @@ class HeuristicPlayer(BasePlayer):
             return ActionProposal(
                 player_id=self.player_id, action="SCREEN", target=holder
             )
-        if "CUT" in legal:
-            return ActionProposal(player_id=self.player_id, action="CUT")
-        if "SPOT_UP" in legal:
-            return ActionProposal(player_id=self.player_id, action="SPOT_UP")
+        if "CUT" in legal or "POP" in legal or "SPOT_UP" in legal:
+            rim_dist = self.court.distance_to_basket(
+                state.players[self.player_id].pos
+            )
+            if rim_dist < 3.0 and "POP" in legal:
+                # Crowded paint: pop out and restore spacing.
+                return ActionProposal(player_id=self.player_id, action="POP")
+            if "CUT" in legal:
+                return ActionProposal(player_id=self.player_id, action="CUT")
+            if "SPOT_UP" in legal:
+                return ActionProposal(player_id=self.player_id, action="SPOT_UP")
         return ActionProposal(player_id=self.player_id, action="HOLD")
 
     def _defense_decision(

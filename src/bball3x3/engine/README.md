@@ -152,13 +152,20 @@ uv run ruff check .
 ```
 
 New WS1 coverage: `test_shot_quality`, `test_resolvers`, `test_contact`,
-`test_rules`, `test_invariants`, `test_agents`, `test_loop_smoke`
+`test_rules`, `test_invariants`, `test_agents`, `test_loop_smoke`,
+`test_display`, `test_ws1_closeout`
 (plus the spec-fallback update in `test_engine_actions`).
 
-Current status: **133 passed, ruff clean.** Smoke reference
-(`play_heuristic_game(seed=7)`): **281 events, final 22-17, SIR = 0.0,
-IAR = 0.0** (heuristic agents propose only legal actions, so IAR 0 is
-expected; IAR > 0 will come from LLM/fuzz traffic).
+Current status: **145 passed, 1 skipped (matplotlib absent), ruff clean.**
+Smoke reference (`play_heuristic_game(seed=7)`): **281 events, final 22-17,
+SIR = 0.0, IAR = 0.0** (heuristic agents propose only legal actions, so
+IAR 0 is expected; IAR > 0 will come from LLM/fuzz traffic). Close-out
+proofs (`tests/test_ws1_closeout.py`): forced-overtime game enters OT and
+closes at plus two; free-throw ladder (shooting, 7th, 10th, and-one) plus
+check-ball recovery; 1,000 random-agent games over 411,043 events with
+SIR = 0 and zero truncations; calibration readout FG1 0.316, FG2 0.472 on
+scarce deep attempts, with PPP well below the ~0.9 FIBA target — in-arc
+finishing under trailing defense stays open (see item 3 below).
 
 ## 3. Integration Notes
 
@@ -184,9 +191,12 @@ expected; IAR > 0 will come from LLM/fuzz traffic).
 1. Full `bball run-game` CLI and asyncio game runner (WS7) reusing
    `loop.py` order with logging, referee calls and LLM agents.
 2. Rule-based referee running every state (WS5-A) wired into the loop.
-3. Resolver calibration: heuristic-vs-heuristic FG%, PPP and possessions
-   per game against public FIBA 3x3 stats; coefficient sensitivity ±20 %.
-4. Full exit check: 1,000 random-agent games with SIR = 0 (fuzz harness
-   exists via `RandomPlayer`; run on demand, not in CI).
+3. Resolver calibration follow-up: the readout (FG1 0.316, FG2 0.472 on
+   scarce attempts, PPP ~0.18-0.19 vs ~0.9 target) points at in-arc
+   finishing under trailing defense and deep-shot scarcity; tune the
+   contest curve, shot-type mix, and the open-shot threshold, then add
+   coefficient sensitivity ±20 %.
+4. Done (WS1-owned): 1,000 random-agent games, 411,043 events, SIR = 0,
+   zero truncations (`tests/test_ws1_closeout.py`).
 5. Movement-limit thresholds against real `time_costs_s` per action and
    zone-target reachability once proposals carry zone targets.

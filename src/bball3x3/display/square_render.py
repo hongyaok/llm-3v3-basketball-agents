@@ -7,6 +7,8 @@ frames import matplotlib lazily so the engine and test suite never
 require it. Rendering reads state and never mutates it.
 """
 
+import math
+
 from bball3x3.schemas.state import GameState
 
 DEFAULT_COURT = {
@@ -130,25 +132,41 @@ def render_frame(
     )
     ax.add_patch(Circle(basket, 0.35, fill=False, edgecolor="red", linewidth=3))
 
+    # Deterministic declutter: players sharing a cell fan out around it so
+    # none hide beneath another. Pure function of state; determinism holds.
+    occupants: dict[tuple[int, int], list[str]] = {}
+    for pid in sorted(state.players):
+        occupants.setdefault(state.players[pid].pos, []).append(pid)
+    offsets: dict[str, tuple[float, float]] = {}
+    for pos, members in occupants.items():
+        for i, pid in enumerate(members):
+            if len(members) == 1:
+                offsets[pid] = (0.0, 0.0)
+            else:
+                angle = 2 * math.pi * i / len(members)
+                offsets[pid] = (0.30 * math.cos(angle), 0.30 * math.sin(angle))
+
     for pid in sorted(state.players):
         player = state.players[pid]
         color = "blue" if player.team == "A" else "red"
+        dx, dy = offsets[pid]
+        cx, cy = (player.pos[0] + dx, player.pos[1] + dy)
         ax.add_patch(
-            Circle(player.pos, 0.4, facecolor=color, edgecolor="white", alpha=0.9)
+            Circle((cx, cy), 0.4, facecolor=color, edgecolor="white", alpha=0.9)
         )
         ax.text(
-            player.pos[0],
-            player.pos[1],
+            cx,
+            cy,
             pid,
             ha="center",
             va="center",
-            fontsize=8,
+            fontsize=9,
             fontweight="bold",
             color="white",
         )
         if pid == holder:
             ax.add_patch(
-                Circle(player.pos, 0.55, fill=False, edgecolor="orange", linewidth=3)
+                Circle((cx, cy), 0.55, fill=False, edgecolor="orange", linewidth=3)
             )
 
     if highlight and highlight.get("arrow"):
