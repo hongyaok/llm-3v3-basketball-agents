@@ -199,11 +199,11 @@ def test_remap_invalid_action(state):
         state, proposal
     )
 
-    assert remapped.action == "HOLD"
+    assert remapped.action == "SPOT_UP"
     assert remapped.target is None
     assert record is not None
     assert record.original_action == "SHOOT"
-    assert record.remapped_action == "HOLD"
+    assert record.remapped_action == "SPOT_UP"
     assert record.reason == "ILLEGAL_POSSESSION"
 
 

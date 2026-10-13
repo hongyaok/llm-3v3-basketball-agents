@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from bball3x3.config import SimulationConfig
 from bball3x3.schemas.state import GameState
 
-
 DEFAULT_TIME_COSTS = {
     "PASS": 1,
     "SHOOT": 1,
@@ -15,6 +14,24 @@ DEFAULT_TIME_COSTS = {
     "POST_UP": 2,
     "HOLD": 1,
     "CLEAR": 2,
+    # Off-ball, defensive and rebound actions default to one event (1 s).
+    "CUT": 1,
+    "CUT_BASELINE": 1,
+    "SCREEN": 1,
+    "ROLL": 1,
+    "POP": 1,
+    "SPOT_UP": 1,
+    "MOVE": 1,
+    "DEFEND": 1,
+    "HELP_PAINT": 1,
+    "SWITCH": 1,
+    "DOUBLE_TEAM": 1,
+    "CONTEST": 1,
+    "STEAL_ATTEMPT": 1,
+    "DENY": 1,
+    "CRASH_BOARDS": 1,
+    "BOX_OUT": 1,
+    "GET_BACK": 1,
 }
 
 

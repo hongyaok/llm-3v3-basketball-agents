@@ -3,7 +3,7 @@
 
 import pytest
 
-from bball3x3.engine.rng import GameRNG, STREAM_NAMES
+from bball3x3.engine.rng import STREAM_NAMES, GameRNG
 
 
 def test_all_streams_exist():

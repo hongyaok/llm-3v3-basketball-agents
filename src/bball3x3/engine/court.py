@@ -5,7 +5,6 @@ from math import dist
 
 from bball3x3.config import CourtConfig
 
-
 ZONES = {
     "TOP": (7, 9),
     "LEFT_WING": (2, 7),

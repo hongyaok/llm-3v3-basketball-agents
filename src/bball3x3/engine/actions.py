@@ -7,7 +7,6 @@ from bball3x3.schemas.actions import (
 )
 from bball3x3.schemas.state import GameState
 
-
 BALL_HOLDER_ACTIONS = {
     "SHOOT",
     "PASS",
@@ -58,6 +57,24 @@ TARGET_PLAYER_ACTIONS = {
     "DENY",
 }
 
+REBOUND_ACTIONS = {
+    "CRASH_BOARDS",
+    "BOX_OUT",
+    "GET_BACK",
+}
+
+
+def _role(state: GameState, player_id: str) -> str:
+    """Classify a player for spec fallback selection."""
+    if state.ball.status == "LOOSE":
+        return "rebound"
+    player = state.players[player_id]
+    if player.team != state.offense:
+        return "defense"
+    if player.has_ball:
+        return "ball_handler"
+    return "offense_offball"
+
 
 def get_legal_actions(
     state: GameState,
@@ -71,6 +88,10 @@ def get_legal_actions(
     if state.phase not in ("LIVE", "OT"):
         return set()
 
+    # Rebound phase: loose ball after a miss. Everyone crashes, boxes or resets.
+    if state.ball.status == "LOOSE":
+        return {"CRASH_BOARDS", "BOX_OUT", "GET_BACK", "MOVE", "HOLD"}
+
     player = state.players[player_id]
 
     if player.team != state.offense:
@@ -82,6 +103,8 @@ def get_legal_actions(
         # A newly acquired ball must be cleared beyond the arc.
         if state.needs_clear:
             actions.discard("SHOOT")
+        else:
+            actions.discard("CLEAR")
 
         return actions
 
@@ -117,18 +140,18 @@ def validate_action(
         state, proposal.player_id
     )
 
-    if action not in legal_actions:
-        return (
-            False,
-            "ILLEGAL_POSSESSION",
-            f"{action} is not legal for {proposal.player_id}",
-        )
-
     if action == "CLEAR" and not state.needs_clear:
         return (
             False,
             "INFEASIBLE",
             "CLEAR is only needed after a possession change.",
+        )
+
+    if action not in legal_actions:
+        return (
+            False,
+            "ILLEGAL_POSSESSION",
+            f"{action} is not legal for {proposal.player_id}",
         )
 
     if action in TARGET_PLAYER_ACTIONS:
@@ -157,6 +180,15 @@ def validate_action(
                     f"{action} requires a teammate target.",
                 )
 
+        # SWITCH swaps assignments with a teammate (target semantics, WS1).
+        if action == "SWITCH":
+            if target.team != actor.team:
+                return (
+                    False,
+                    "BAD_TARGET",
+                    "SWITCH requires a teammate to swap assignments with.",
+                )
+
         if action in {"DOUBLE_TEAM", "DENY"}:
             if target.team == actor.team:
                 return (
@@ -179,7 +211,13 @@ def remap_invalid_action(
     state: GameState,
     proposal: ActionProposal,
 ) -> tuple[ActionProposal, RemappedAction | None]:
-    """Replace an illegal action with a safe legal fallback."""
+    """Replace an illegal action with a safe legal fallback (spec section 3).
+
+    Fallbacks: ball handler -> HOLD, or a safe PASS if the shot clock is
+    <= 2; off-ball offense -> SPOT_UP at the nearest open zone (action-only
+    here); defender -> DEFEND their assigned matchup; rebound phase ->
+    BOX_OUT. Each remap is logged with its invalid reason.
+    """
 
     is_valid, reason, details = validate_action(
         state, proposal
@@ -206,9 +244,47 @@ def remap_invalid_action(
             "Cannot remap actions while the game is not live."
         )
 
-    # HOLD is available to all player roles.
-    fallback = "HOLD"
+    role = _role(state, proposal.player_id)
+    player = state.players[proposal.player_id]
 
+    if role == "ball_handler" and state.shot_clock_s <= 2.0:
+        mate = next(
+            (
+                pid
+                for pid, p in state.players.items()
+                if p.team == player.team and pid != proposal.player_id
+            ),
+            None,
+        )
+        if mate is not None and "PASS" in legal_actions:
+            fallback, fallback_target = "PASS", mate
+            details = f"{details} Safe pass under shot-clock pressure.".strip()
+            remapped = ActionProposal(
+                player_id=proposal.player_id,
+                action=fallback,
+                target=fallback_target,
+                memory_ref=proposal.memory_ref,
+            )
+            record = RemappedAction(
+                player_id=proposal.player_id,
+                original_action=proposal.action,
+                remapped_action=fallback,
+                reason=reason,
+                details=details,
+            )
+            return remapped, record
+
+    if role == "offense_offball" and "SPOT_UP" in legal_actions:
+        fallback = "SPOT_UP"
+    elif role == "defense" and "DEFEND" in legal_actions:
+        fallback = "DEFEND"
+    elif role == "rebound" and "BOX_OUT" in legal_actions:
+        fallback = "BOX_OUT"
+    else:
+        fallback = "HOLD"
+
+    if fallback not in legal_actions:
+        fallback = "HOLD"
     if fallback not in legal_actions:
         raise ValueError("No safe fallback action available.")
 

@@ -10,7 +10,6 @@ from bball3x3.schemas.state import (
     PlayerState,
 )
 
-
 INITIAL_POSITIONS = {
     "A1": (7, 9),
     "A2": (3, 7),

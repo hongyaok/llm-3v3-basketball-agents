@@ -2,7 +2,7 @@
 import pytest
 
 from bball3x3.config import CourtConfig
-from bball3x3.engine.court import Court, ZONES
+from bball3x3.engine.court import ZONES, Court
 
 
 @pytest.fixture

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.random import Generator, SeedSequence
 
-
 STREAM_NAMES = (
     "shooting",
     "passing",
