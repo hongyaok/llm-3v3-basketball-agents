@@ -9,8 +9,10 @@ description = "llm multi-agent 3v3 basketball simulation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "openai>=3.0.0",
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
+    "tenacity>=8.2.0",
 ]
 
 [project.optional-dependencies]
