@@ -1,6 +1,16 @@
 # WS6: step-by-step delivery plan
 
-Status: repository review complete; implementation has not started in this session.
+Status (2026-10-16): logging, indexing, possession validation, primary and
+descriptive metrics, adaptation-bin calculations, observation logging,
+transcripts, experiment exports, seed-paired statistics/possession models,
+and adaptation plots are **implemented and tested**. `bball export` produces
+game, team, and possession CSV tables plus a JSON manifest from saved logs;
+`bball stats` produces analysis JSON, and `bball plots` produces PPP/MAUR/CSSR
+curves, pooled CSV and provenance manifest. `tests/test_exports.py` covers pairing identifiers,
+rate evidence, possession covariates, CSV/CLI output, incomplete games, invalid
+possession accounting, exceptional scoring, and overtime bins. The full suite
+passes (109 tests), and Ruff passes. Real-run producer integration remains.
+The original review and sequencing notes below are historical.
 
 Sources: `IMPLEMENTATION_PLAN.md`, especially WS0, WS4, WS6 and milestones M1/M5/M6; original proposal pages 8-13 and 17-20, including Figure 3 on page 11.
 
@@ -12,7 +22,7 @@ The current checkout contains:
 
 - Pydantic state, action, message, memory, referee and log schemas.
 - YAML configs and loaders, a lockfile, and schema/config tests.
-- Empty `logging/`, `analysis/`, and `runner/` packages, plus skeletons for the other workstreams.
+- Implemented WS6 logging and analysis packages; the runner and other producer packages remain skeletons.
 - No generated game logs or implemented simulation to integrate with yet.
 - No checked-in GitHub Actions workflow. WS0 scaffolding exists, but its entire milestone should not be assumed complete.
 
@@ -118,7 +128,19 @@ Include dedicated possession sequences for offensive rebounds, turnovers, and-on
 
 ### Stages 5-6 analysis outputs
 
-Export game/team rows with experiment, condition, seed, start-side replicate, all metric counts/rates, completion status and configuration identity. Export possession rows for transcripts and modelling. CLI commands should be wired into the shared runner CLI with its owner; the current repo has no CLI entry point yet.
+Stage 5 export status: **implemented and tested**. `analysis/exports.py` reads saved JSONL logs and produces game/team rows with experiment, physical-team conditions, seed, first-possession replicate, metric counts/rates/status, completion status, and configuration identity. Possession rows include points, pre-possession score difference from the owning team's perspective, clock, regulation/OT bin, and model eligibility. `bball export <new-output-dir> <game.jsonl>...` writes three CSV files and a JSON manifest. Incomplete games are excluded by default and listed in the manifest; completed games with invalid possession accounting retain game/team rows but do not receive unreliable possession rows. Existing output directories are not overwritten. The CLI entry point is registered in `pyproject.toml`; runner CLI consolidation still depends on its owner.
+
+Stage 6 statistics status: **implemented and tested**. `analysis/stats.py` and
+`bball stats <export-dir> <new-result.json>` calculate per-seed A-minus-X
+effects, deterministic seed-cluster bootstrap intervals, signed-rank p-values,
+sign stability and explicit missing-pair reasons. Additive and condition-by-time
+Gaussian possession models use a game random intercept and pre-possession score
+difference; insufficient or failed fits are explicit. The model is exploratory
+because it does not model dependence between the two games of a seed; paired
+seed analysis remains primary. Adaptation plots are implemented and tested in
+`analysis/plots.py` and `tests/test_plots.py`: valid game counts are pooled by
+condition/bin, zero-exposure bins remain blank, and OT is a separate marker.
+Real-game validation is not yet implemented.
 
 For each ablation, compute A-minus-X differences within each game, then aggregate the two first-possession variants within each seed. Bootstrap seed clusters, preserving both variants together; run the planned Wilcoxon test on per-seed differences. Report effect size, seed count, interval, ties/zero differences and sign stability. Define handling for missing pairs rather than treating them as complete. These are the implementation plan's requested analyses; settle the statistical specification before main experiments are frozen.
 
@@ -132,9 +154,9 @@ Add the plan's descriptive metrics once their event inputs exist: assists, turno
 
 For implementation, set up the repo environment with `uv sync --extra dev`, then establish the existing baseline with `uv run pytest` and `uv run ruff check .`. Use focused tests for the active stage before running the suite. Record pre-existing failures separately from regressions.
 
-This review did not run that baseline: the shell's `python` is a Windows Store alias, `uv`'s default cache was inaccessible in the sandbox, and a temporary dependency fetch was network-blocked. The bundled Python runtime was sufficient to read the proposal but lacks pytest, Ruff and PyYAML. Resolve the development environment at the start of implementation; no passing baseline is claimed here.
+The initial review did not run that baseline. The current checkout has since been verified with 109 passing tests and a clean Ruff check (2026-10-16).
 
-The immediate next session should cover **Step 1 only**:
+The original immediate-next-session instruction was **Step 1 only** (now completed):
 
 1. Walk through one decision event using the schemas already in the repo.
 2. Write the concrete log contract and settle the proposed conventions above.

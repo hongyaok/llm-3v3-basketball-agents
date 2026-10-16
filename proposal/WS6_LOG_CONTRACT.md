@@ -101,7 +101,9 @@ Hash the exact saved effective config using a documented canonical JSON encoding
 | `invalid_reason` | `null` for a valid proposal; otherwise one existing `InvalidReason` value |
 | `remapped_action`, `remapped_target` | Replacement action and target when invalid; both `null` for an unchanged valid proposal. A replacement action may legitimately have a null target |
 | `executed_action`, `executed_target` | Action and target handed to the resolver, including any safe replacement. This records selected intent, not guaranteed success |
-| `observation_hash`, `memory_ref`, `latency_ms`, `tokens`, `cost_usd` | Existing diagnostic fields; not denominators for these three metrics |
+| `observation_text` | Exact player-facing text supplied before the decision; optional for legacy logs. `null` means not recorded; an empty string is a recorded empty observation |
+| `observation_hash` | With text present, SHA-256 of its exact UTF-8 bytes, automatically populated if empty; a supplied mismatch is rejected. Legacy hash-only records remain readable |
+| `memory_ref`, `latency_ms`, `tokens`, `cost_usd` | Existing diagnostic fields; not denominators for these three metrics |
 
 `InvalidReason` is one of `PARSE_FAIL`, `UNKNOWN_ACTION`, `ILLEGAL_POSSESSION`, `INFEASIBLE`, or `BAD_TARGET`.
 
@@ -415,4 +417,8 @@ For the first implementation, test the worked example plus separate cases for fi
 
 ## 9. Deferred extensions
 
-The repository now includes typed initial-memory, memory-write, CS-write, and per-action opponent-involvement fields as groundwork for coordination metrics. Full coordination semantics and transcripts still need a follow-up contract: observation text, stable message/call IDs, and captain-call identity across `maintain=true`. This first delivery defines PPP/IAR/SIR as its core and does not claim that those metrics complete all of WS6.
+The repository now includes typed initial-memory, memory-write, CS-write, per-action opponent-involvement, and observation-text fields. `analysis/qualitative.py` and `bball transcript <game.jsonl> <possession_id>` render saved observations and the ordered event history. Producers still need to populate the new fields in real runs.
+
+Transcript boundaries are reconstructed from resolutions. Transfer events can belong to two adjacent possession spans: the renderer includes the full event as context, identifies `possession_before` for its decisions, and preserves scoring possession IDs. Open possessions can be inspected in unfinished logs. Earlier messages with delivery in the span and the latest prior captain replacement plus subsequent maintain records are labeled context, not new emissions. Missing delivery metadata is explicitly marked as an inferred t+1 convention. Missing observations are never reconstructed from hashes or game state.
+
+Stable message/call IDs and captain-call identity across `maintain=true` still need a follow-up coordination contract and producer integration. Context shown in a transcript is not proof of exact per-player inbox visibility; the logged observation supplies that evidence. This first delivery defines PPP/IAR/SIR as its core and does not claim that those metrics complete all of WS6.

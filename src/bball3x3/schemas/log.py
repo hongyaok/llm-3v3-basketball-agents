@@ -1,3 +1,4 @@
+from hashlib import sha256
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
@@ -239,6 +240,9 @@ class DecisionRecord(LogModel):
     executed_action: ActionType
     executed_target: str | None
 
+    # Exact player-facing observation before this decision. None means legacy
+    # or unavailable evidence; an empty string is a recorded empty observation.
+    observation_text: str | None = None
     observation_hash: str = ""
     memory_ref: list[str] | None = None
     latency_ms: float = Field(default=0.0, ge=0)
@@ -247,6 +251,11 @@ class DecisionRecord(LogModel):
 
     @model_validator(mode="after")
     def validate_proposal_and_execution(self) -> Self:
+        if self.observation_text is not None:
+            digest = sha256(self.observation_text.encode("utf-8")).hexdigest()
+            if self.observation_hash and self.observation_hash != digest:
+                raise ValueError("observation_hash must match SHA-256 of observation_text UTF-8.")
+            self.observation_hash = digest
         if self.parse_ok:
             if self.parsed_output is None:
                 raise ValueError("A successful parse requires parsed_output.")
