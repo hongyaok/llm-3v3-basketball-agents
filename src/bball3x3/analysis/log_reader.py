@@ -14,7 +14,8 @@ from typing import Any, TypeAlias
 
 from pydantic import BaseModel
 
-from bball3x3.logging.event_log import LogReadError, read_events
+from bball3x3.logging.event_log import LogReadError as LogReadError
+from bball3x3.logging.event_log import read_events
 from bball3x3.schemas.log import GameEndRecord, GameStartRecord
 
 LogRecord: TypeAlias = BaseModel | dict[str, Any]

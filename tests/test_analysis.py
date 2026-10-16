@@ -15,9 +15,11 @@ from bball3x3.schemas.log import (
     InvariantViolationRecord,
     MemoryProposalRecord,
     MessageRecord,
+    PossessionChange,
     PossessionEndRecord,
     RefereeRecord,
     ResolutionRecord,
+    ScoringEvent,
     StateRecord,
 )
 from bball3x3.schemas.memory import CSProposal, MemoryProposal
@@ -91,12 +93,34 @@ def _resolution(event_idx: int, *, game_over: bool = False) -> ResolutionRecord:
         actions={"A1": "HOLD", "B1": "HOLD"},
         action_targets={"A1": None, "B1": None},
         outcomes=outcomes,
-        possession_before={"possession_id": "p0001", "team": "A"},
+        possession_before={
+            "possession_id": "p0002" if event_idx == 3 else "p0001",
+            "team": "B" if event_idx == 3 else "A",
+        },
         possession_after=None
         if game_over
-        else {"possession_id": "p0001", "team": "A"},
-        scoring_events=[],
-        possession_changes=[],
+        else {
+            "possession_id": "p0002" if event_idx == 2 else "p0001",
+            "team": "B" if event_idx == 2 else "A",
+        },
+        scoring_events=(
+            [ScoringEvent(team="A", points=2, source="FIELD_GOAL", possession_id="p0001")]
+            if event_idx == 2
+            else [ScoringEvent(team="B", points=1, source="FIELD_GOAL", possession_id="p0002")]
+            if event_idx == 3
+            else []
+        ),
+        possession_changes=(
+            [PossessionChange(
+                from_possession_id="p0001",
+                to_possession_id="p0002",
+                to_team="B",
+                reason="MADE_BASKET",
+                kind="CONTROL_TRANSFER",
+            )]
+            if event_idx == 2
+            else []
+        ),
         game_over=game_over,
         game_end_reason="CLOCK_EXPIRED" if game_over else None,
     )
@@ -106,6 +130,7 @@ def _state(event_idx: int, *, checks_complete: bool = True) -> StateRecord:
     state = GameState(
         event_idx=event_idx,
         game_clock_s=3 - event_idx,
+        score={"A": 2 if event_idx >= 2 else 0, "B": 1 if event_idx >= 3 else 0},
         ball=BallState(pos=(7, 1), holder="A1"),
     )
     return StateRecord(
@@ -204,6 +229,15 @@ def _complete_records() -> list:
                 details="synthetic violation",
             ),
             _state(2),
+            PossessionEndRecord(
+                possession_id="p0001",
+                team="A",
+                points=2,
+                points_by_team={"A": 2, "B": 0},
+                end_reason="MADE_BASKET",
+                start_event_idx=1,
+                end_event_idx=2,
+            ),
             _decision(3, "A1", "SHOOT", memory_ref=["M1"]),
             _decision(3, "B1", "HOLD"),
             MessageRecord(
@@ -218,15 +252,6 @@ def _complete_records() -> list:
             _resolution(3, game_over=True),
             RefereeRecord(event_idx=3, query="event 3", decision=RefereeDecision()),
             _state(3),
-            PossessionEndRecord(
-                possession_id="p0001",
-                team="A",
-                points=2,
-                points_by_team={"A": 2, "B": 0},
-                end_reason="MADE_BASKET",
-                start_event_idx=1,
-                end_event_idx=2,
-            ),
             PossessionEndRecord(
                 possession_id="p0002",
                 team="B",
@@ -394,6 +419,22 @@ def test_ppp_uses_points_by_team_for_exceptional_scoring():
     end = records[-1]
     assert isinstance(end, GameEndRecord)
     end.final_score = {"A": 1, "B": 1}
+    second = next(
+        record for record in records
+        if isinstance(record, ResolutionRecord) and record.event_idx == 2
+    )
+    second.scoring_events = [
+        ScoringEvent(team="A", points=1, source="FIELD_GOAL", possession_id="p0001"),
+        ScoringEvent(team="B", points=1, source="FREE_THROW", possession_id="p0001"),
+    ]
+    third = next(
+        record for record in records
+        if isinstance(record, ResolutionRecord) and record.event_idx == 3
+    )
+    third.scoring_events = []
+    for record in records:
+        if isinstance(record, StateRecord) and record.state is not None and record.event_idx >= 2:
+            record.state.score = {"A": 1, "B": 1}
 
     metrics = compute_game_metrics(records)
     assert metrics.ppp["A"].rate == 1.0

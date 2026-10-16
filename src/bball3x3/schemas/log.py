@@ -60,6 +60,46 @@ class ScoringEvent(LogModel):
     possession_id: NonEmptyStr
 
 
+class ShotAttempt(LogModel):
+    """One field-goal attempt; assist and screen links are engine outcomes."""
+
+    team: Team
+    shooter: NonEmptyStr
+    made: bool
+    assist_by: NonEmptyStr | None = None
+    screen_id: NonEmptyStr | None = None
+
+    @model_validator(mode="after")
+    def validate_assist(self) -> Self:
+        if self.assist_by is not None and (not self.made or self.assist_by == self.shooter):
+            raise ValueError("An assist requires a made shot by a different player.")
+        return self
+
+
+class ScreenEvent(LogModel):
+    """A screen attempt, linked to a shot by its game-unique ID."""
+
+    screen_id: NonEmptyStr
+    team: Team
+    screener: NonEmptyStr
+    freed_player: NonEmptyStr
+
+    @model_validator(mode="after")
+    def validate_players(self) -> Self:
+        if self.screener == self.freed_player:
+            raise ValueError("A screen must involve two distinct teammates.")
+        return self
+
+
+class TurnoverEvent(LogModel):
+    """An explicit loss of control, including team violations."""
+
+    team: Team
+    possession_id: NonEmptyStr
+    reason: NonEmptyStr
+    player: NonEmptyStr | None = None
+
+
 class PossessionChange(LogModel):
     from_possession_id: NonEmptyStr
     to_possession_id: NonEmptyStr
@@ -367,6 +407,12 @@ class ResolutionRecord(LogModel):
     possession_after: PossessionRef | None
     scoring_events: list[ScoringEvent]
     possession_changes: list[PossessionChange]
+
+    # None means the producer did not supply descriptive evidence. An empty
+    # list means that event was checked and had no such outcomes.
+    shots: list[ShotAttempt] | None = None
+    screens: list[ScreenEvent] | None = None
+    turnovers: list[TurnoverEvent] | None = None
 
     game_over: bool
     game_end_reason: GameEndReason | None

@@ -15,7 +15,10 @@ from .log import (
     PossessionEndRecord,
     RefereeRecord,
     ResolutionRecord,
+    ScreenEvent,
+    ShotAttempt,
     StateRecord,
+    TurnoverEvent,
 )
 from .memory import (
     CSEntry,
@@ -81,6 +84,9 @@ __all__ = [
     "CSProposalRecord",
     "CSWriteRecord",
     "ResolutionRecord",
+    "ScreenEvent",
+    "ShotAttempt",
+    "TurnoverEvent",
     "RefereeRecord",
     "StateRecord",
     "InvariantViolationRecord",

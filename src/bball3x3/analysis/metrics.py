@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from bball3x3.schemas.log import (
 )
 
 from .log_reader import GameLogIndex, LogRecord, record_event_idx, record_type
+from .possessions import PossessionError, validate_possessions
 
 Team = Literal["A", "B"]
 MetricStatus = Literal[
@@ -59,6 +61,56 @@ class RateMetric:
             "denominator": self.denominator,
             "rate": self.rate,
             "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
+class MemoryGrowthMetric:
+    """Number of stored entries at game start and after each event."""
+
+    initial_count: int | None
+    final_count: int | None
+    net_change: int | None
+    peak_count: int | None
+    by_event: dict[int, int]
+    status: MetricStatus
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "initial_count": self.initial_count,
+            "final_count": self.final_count,
+            "net_change": self.net_change,
+            "peak_count": self.peak_count,
+            "by_event": {str(event): count for event, count in self.by_event.items()},
+            "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
+class AdaptationMetrics:
+    """Five fixed regulation bins plus an overtime bin for three rates."""
+
+    regulation_duration_s: float | None
+    ppp: dict[str, dict[str, RateMetric]]
+    maur: dict[str, dict[str, RateMetric]]
+    cssr: dict[str, dict[str, RateMetric]]
+
+    def to_dict(self) -> dict[str, Any]:
+        def rates(values: Mapping[str, Mapping[str, RateMetric]]) -> dict[str, Any]:
+            return {
+                team: {label: metric.to_dict() for label, metric in bins.items()}
+                for team, bins in values.items()
+            }
+
+        return {
+            "regulation_duration_s": self.regulation_duration_s,
+            "binning": "five equal elapsed-regulation-time bins; OT separate",
+            "regulation_bin_edges_fraction": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            "ppp_attribution": "possession start",
+            "maur_cssr_attribution": "event start",
+            "ppp": rates(self.ppp),
+            "maur": rates(self.maur),
+            "cssr": rates(self.cssr),
         }
 
 
@@ -101,6 +153,12 @@ class GameMetrics:
     sir: RateMetric
     sir_by_constraint: dict[str, RateMetric]
     referee_call_rate: RateMetric
+    assist_rate: dict[str, RateMetric]
+    turnover_rate: dict[str, RateMetric]
+    screen_to_shot_conversion: dict[str, RateMetric]
+    coordination_conflict_rate: dict[str, RateMetric]
+    memory_growth: dict[str, MemoryGrowthMetric]
+    adaptation: AdaptationMetrics
     referee_calls_by_type: dict[str, int] = field(default_factory=dict)
     memory_validation_complete: dict[str, bool] = field(default_factory=dict)
     grounding_context_complete: dict[str, bool] = field(default_factory=dict)
@@ -128,6 +186,14 @@ class GameMetrics:
             "sir": self.sir.to_dict(),
             "sir_by_constraint": team_rates(self.sir_by_constraint),
             "referee_call_rate": self.referee_call_rate.to_dict(),
+            "assist_rate": team_rates(self.assist_rate),
+            "turnover_rate": team_rates(self.turnover_rate),
+            "screen_to_shot_conversion": team_rates(self.screen_to_shot_conversion),
+            "coordination_conflict_rate": team_rates(self.coordination_conflict_rate),
+            "memory_growth": {
+                team: metric.to_dict() for team, metric in self.memory_growth.items()
+            },
+            "adaptation": self.adaptation.to_dict(),
             "referee_calls_by_type": dict(self.referee_calls_by_type),
             "memory_validation_complete": dict(self.memory_validation_complete),
             "grounding_context_complete": dict(self.grounding_context_complete),
@@ -485,6 +551,26 @@ def _explicit_involved_opponents(
     return involved, True
 
 
+def _valid_memory_refs(
+    decision: DecisionRecord,
+    availability: Mapping[Team, Mapping[str, int]],
+    unavailable_from: Mapping[Team, Mapping[str, int]],
+) -> list[str]:
+    refs = decision.memory_ref
+    if refs is None and decision.parsed_output is not None:
+        refs = decision.parsed_output.memory_ref
+    return [
+        ref
+        for ref in refs or ()
+        if ref in availability[decision.team]
+        and availability[decision.team][ref] <= decision.event_idx
+        and (
+            ref not in unavailable_from[decision.team]
+            or decision.event_idx < unavailable_from[decision.team][ref]
+        )
+    ]
+
+
 def _memory_metrics(
     records: Sequence[LogRecord],
     decisions_by_team: Mapping[Team, Sequence[DecisionRecord]],
@@ -511,19 +597,7 @@ def _memory_metrics(
 
     for team in _TEAMS:
         for decision in decisions_by_team[team]:
-            refs = decision.memory_ref
-            if refs is None and decision.parsed_output is not None:
-                refs = decision.parsed_output.memory_ref
-            valid_refs = [
-                ref
-                for ref in refs or ()
-                if ref in availability[team]
-                and availability[team][ref] <= decision.event_idx
-                and (
-                    ref not in unavailable_from[team]
-                    or decision.event_idx < unavailable_from[team][ref]
-                )
-            ]
+            valid_refs = _valid_memory_refs(decision, availability, unavailable_from)
             if not valid_refs:
                 continue
             used[team] += 1
@@ -556,6 +630,421 @@ def _memory_metrics(
     return maur, grounded_maur, validation_complete, grounding_complete
 
 
+_ZONES = frozenset(
+    {
+        "TOP", "LEFT_WING", "RIGHT_WING", "LEFT_CORNER", "RIGHT_CORNER",
+        "LEFT_ELBOW", "RIGHT_ELBOW", "LEFT_BLOCK", "RIGHT_BLOCK", "PAINT",
+    }
+)
+_TIME_BINS = ("q1", "q2", "q3", "q4", "q5", "ot")
+_TURNOVER_END_REASONS = frozenset(
+    {"TURNOVER", "STEAL", "INTERCEPTION", "SHOT_CLOCK_VIOLATION", "OFFENSIVE_FOUL"}
+)
+
+
+def _descriptive_outcome_rates(
+    records: Sequence[LogRecord],
+    end: GameEndRecord | None,
+    complete: bool,
+    ppp: Mapping[str, RateMetric],
+) -> tuple[dict[str, RateMetric], dict[str, RateMetric], dict[str, RateMetric]]:
+    resolutions = [record for record in records if isinstance(record, ResolutionRecord)]
+    resolution_evidence = (
+        end is not None
+        and len(resolutions) == end.last_event_idx
+        and {record.event_idx for record in resolutions} == set(range(1, end.last_event_idx + 1))
+    )
+    shot_evidence = resolution_evidence
+    screen_evidence = resolution_evidence
+    turnover_evidence = resolution_evidence
+    made: defaultdict[Team, int] = defaultdict(int)
+    assisted: defaultdict[Team, int] = defaultdict(int)
+    screens: defaultdict[Team, int] = defaultdict(int)
+    screens_by_id: dict[str, tuple[int, Team, str]] = {}
+    linked_shots: list[tuple[int, Team, str, str]] = []
+    turnovers: dict[Team, set[str]] = {team: set() for team in _TEAMS}
+    closed = {
+        record.possession_id: record
+        for record in records
+        if isinstance(record, PossessionEndRecord)
+    }
+    player_team = {
+        (record.event_idx, record.player): record.team
+        for record in records
+        if isinstance(record, DecisionRecord)
+    }
+
+    for resolution in resolutions:
+        if resolution.shots is None:
+            shot_evidence = False
+            screen_evidence = False
+        else:
+            for shot in resolution.shots:
+                if player_team.get((resolution.event_idx, shot.shooter)) != shot.team:
+                    shot_evidence = False
+                if shot.assist_by is not None and (
+                    player_team.get((resolution.event_idx, shot.assist_by)) != shot.team
+                ):
+                    shot_evidence = False
+                if shot.made:
+                    made[shot.team] += 1
+                    if shot.assist_by is not None:
+                        assisted[shot.team] += 1
+                if shot.screen_id is not None:
+                    linked_shots.append(
+                        (resolution.event_idx, shot.team, shot.shooter, shot.screen_id)
+                    )
+            for team in _TEAMS:
+                scored = sum(
+                    scoring.team == team and scoring.source == "FIELD_GOAL"
+                    for scoring in resolution.scoring_events
+                )
+                made_here = sum(shot.team == team and shot.made for shot in resolution.shots)
+                if scored != made_here:
+                    shot_evidence = False
+
+        if resolution.screens is None:
+            screen_evidence = False
+        else:
+            for screen in resolution.screens:
+                screens[screen.team] += 1
+                if (
+                    player_team.get((resolution.event_idx, screen.screener)) != screen.team
+                    or player_team.get((resolution.event_idx, screen.freed_player)) != screen.team
+                    or resolution.actions.get(screen.screener) != "SCREEN"
+                ):
+                    screen_evidence = False
+                if screen.screen_id in screens_by_id:
+                    screen_evidence = False
+                screens_by_id[screen.screen_id] = (
+                    resolution.event_idx, screen.team, screen.freed_player
+                )
+
+        if resolution.turnovers is None:
+            turnover_evidence = False
+        else:
+            for turnover in resolution.turnovers:
+                if turnover.player is not None and (
+                    player_team.get((resolution.event_idx, turnover.player)) != turnover.team
+                ):
+                    turnover_evidence = False
+                possession = closed.get(turnover.possession_id)
+                if (
+                    possession is None
+                    or possession.team != turnover.team
+                    or possession.end_event_idx != resolution.event_idx
+                    or turnover.possession_id in turnovers[turnover.team]
+                ):
+                    turnover_evidence = False
+                turnovers[turnover.team].add(turnover.possession_id)
+
+    for possession in closed.values():
+        if (
+            possession.end_reason.upper() in _TURNOVER_END_REASONS
+            and possession.possession_id not in turnovers[possession.team]
+        ):
+            turnover_evidence = False
+
+    converted: set[str] = set()
+    for event_idx, team, shooter, screen_id in linked_shots:
+        screen = screens_by_id.get(screen_id)
+        if screen is None or screen[1:] != (team, shooter):
+            screen_evidence = False
+        elif 0 <= event_idx - screen[0] <= 1:
+            converted.add(screen_id)
+
+    assist_rate = {
+        team: _rate(
+            assisted[team], made[team], complete=complete, evidence_complete=shot_evidence
+        )
+        for team in _TEAMS
+    }
+    turnover_rate = {
+        team: _rate(
+            len(turnovers[team]),
+            ppp[team].denominator,
+            complete=complete,
+            evidence_complete=turnover_evidence and ppp[team].status in ("ok", "undefined"),
+        )
+        for team in _TEAMS
+    }
+    screen_conversion = {
+        team: _rate(
+            sum(screens_by_id[screen_id][1] == team for screen_id in converted),
+            screens[team],
+            complete=complete,
+            evidence_complete=screen_evidence,
+        )
+        for team in _TEAMS
+    }
+    return assist_rate, turnover_rate, screen_conversion
+
+
+def _coordination_conflicts(
+    records: Sequence[LogRecord],
+    end: GameEndRecord | None,
+    complete: bool,
+    decision_evidence: Mapping[Team, bool],
+) -> dict[str, RateMetric]:
+    by_event: defaultdict[tuple[int, Team], dict[str, str]] = defaultdict(dict)
+    unique = {team: True for team in _TEAMS}
+    for record in records:
+        if not isinstance(record, DecisionRecord):
+            continue
+        key = (record.event_idx, record.team)
+        if record.player in by_event[key]:
+            unique[record.team] = False
+        by_event[key][record.player] = record.executed_target or ""
+
+    eligible: defaultdict[Team, int] = defaultdict(int)
+    conflicts: defaultdict[Team, int] = defaultdict(int)
+    for (_, team), targets in by_event.items():
+        zone_targets = [target for target in targets.values() if target in _ZONES]
+        if len(zone_targets) < 2:
+            continue
+        eligible[team] += 1
+        if len(set(zone_targets)) < len(zone_targets):
+            conflicts[team] += 1
+    if end is not None:
+        for team in _TEAMS:
+            if any(
+                len(by_event.get((event_idx, team), {})) != 3
+                for event_idx in range(1, end.last_event_idx + 1)
+            ):
+                unique[team] = False
+    return {
+        team: _rate(
+            conflicts[team],
+            eligible[team],
+            complete=complete,
+            evidence_complete=decision_evidence[team] and unique[team],
+        )
+        for team in _TEAMS
+    }
+
+
+def _memory_growth(
+    records: Sequence[LogRecord],
+    start: GameStartRecord | None,
+    end: GameEndRecord | None,
+    complete: bool,
+    known_memory_ids: Mapping[str, Iterable[str]] | None,
+) -> dict[str, MemoryGrowthMetric]:
+    event_limit = end.last_event_idx if end is not None else max(
+        (record.event_idx for record in records if isinstance(record, ResolutionRecord)),
+        default=0,
+    )
+    writes: defaultdict[tuple[int, Team], list[MemoryWriteRecord]] = defaultdict(list)
+    written_ids: set[tuple[int, Team, str]] = set()
+    for record in records:
+        if isinstance(record, MemoryWriteRecord):
+            writes[(record.event_idx, record.team)].append(record)
+            written_ids.add((record.event_idx, record.team, record.memory_id))
+
+    result: dict[str, MemoryGrowthMetric] = {}
+    for team in _TEAMS:
+        if start is not None and start.initial_memory is not None:
+            initial = {entry.id for entry in start.initial_memory[team]}
+        elif known_memory_ids is not None and team in known_memory_ids:
+            initial = set(known_memory_ids[team])
+        else:
+            result[team] = MemoryGrowthMetric(None, None, None, None, {},
+                "incomplete" if not complete else "insufficient_evidence")
+            continue
+
+        active = initial.copy()
+        counts = {0: len(initial)}
+        evidence = True
+        for event_idx in range(1, event_limit + 1):
+            for write in writes[(event_idx, team)]:
+                for evicted_id in write.evicted_ids:
+                    if evicted_id not in active:
+                        evidence = False
+                    active.discard(evicted_id)
+                active.add(write.memory_id)
+            counts[event_idx] = len(active)
+        for record in records:
+            if isinstance(record, MemoryWriteRecord) and record.team == team:
+                if record.event_idx > event_limit:
+                    evidence = False
+            elif isinstance(record, MemoryProposalRecord) and record.team == team:
+                if record.accepted:
+                    memory_id = record.new_id or record.merged_into
+                    if not memory_id or (record.event_idx, team, memory_id) not in written_ids:
+                        evidence = False
+        status: MetricStatus = (
+            "incomplete" if not complete else "ok" if evidence else "insufficient_evidence"
+        )
+        result[team] = MemoryGrowthMetric(
+            len(initial), len(active), len(active) - len(initial), max(counts.values()),
+            counts, status,
+        )
+    return result
+
+
+def _state_clock_and_phase(state: StateRecord | None) -> tuple[float, str] | None:
+    if state is None:
+        return None
+    if state.state is not None:
+        return state.state.game_clock_s, state.state.phase
+    raw = state.raw_state or {}
+    clock, phase = raw.get("game_clock_s"), raw.get("phase")
+    if isinstance(clock, (int, float)) and not isinstance(clock, bool) and isinstance(phase, str):
+        return float(clock), phase
+    return None
+
+
+def _adaptation_metrics(
+    records: Sequence[LogRecord],
+    start: GameStartRecord | None,
+    end: GameEndRecord | None,
+    complete: bool,
+    ppp: Mapping[str, RateMetric],
+    maur: Mapping[str, RateMetric],
+    cssr: Mapping[str, RateMetric],
+    known_memory_ids: Mapping[str, Iterable[str]] | None,
+    memory_opponents: Mapping[str, Mapping[str, str]] | None,
+) -> AdaptationMetrics:
+    duration = start.initial_state.game_clock_s if start is not None else None
+    valid_duration = (
+        isinstance(duration, (int, float))
+        and not isinstance(duration, bool)
+        and math.isfinite(duration)
+        and duration > 0
+    )
+    configured_duration = (
+        start.config_snapshot.get("rules", {}).get("game_length_s")
+        if start is not None and isinstance(start.config_snapshot.get("rules"), Mapping)
+        else None
+    )
+    states = {record.event_idx: record for record in records if isinstance(record, StateRecord)}
+    state_count = sum(isinstance(record, StateRecord) for record in records)
+    resolutions = [record for record in records if isinstance(record, ResolutionRecord)]
+    last_event = end.last_event_idx if end is not None else max(states, default=0)
+    timing_evidence = (
+        valid_duration
+        and start is not None
+        and end is not None
+        and len(states) == state_count
+        and set(states) == set(range(1, last_event + 1))
+        and len(resolutions) == last_event
+        and {record.event_idx for record in resolutions} == set(range(1, last_event + 1))
+    )
+    for state in states.values():
+        timing = _state_clock_and_phase(state)
+        if (
+            timing is None
+            or not valid_duration
+            or not math.isfinite(timing[0])
+            or timing[0] < 0
+            or timing[0] > duration
+            or timing[1] not in ("LIVE", "DEAD", "FT", "OT")
+        ):
+            timing_evidence = False
+    if configured_duration is not None and configured_duration != duration:
+        timing_evidence = False
+    event_bins: dict[int, str] = {}
+    for event_idx in range(1, last_event + 1):
+        previous = (
+            (start.initial_state.game_clock_s, start.initial_state.phase)
+            if event_idx == 1 and start is not None else
+            _state_clock_and_phase(states.get(event_idx - 1))
+        )
+        if previous is None or not valid_duration:
+            timing_evidence = False
+            continue
+        clock, phase = previous
+        if not math.isfinite(clock) or clock < 0 or clock > duration:
+            timing_evidence = False
+            continue
+        if phase == "OT":
+            event_bins[event_idx] = "ot"
+        elif phase in ("LIVE", "DEAD", "FT"):
+            elapsed_fraction = (duration - clock) / duration
+            event_bins[event_idx] = f"q{min(5, int(elapsed_fraction * 5) + 1)}"
+        else:
+            timing_evidence = False
+
+    ot_ids: set[str] = set()
+    ot_started = False
+    for resolution in (record for record in records if isinstance(record, ResolutionRecord)):
+        for change in resolution.possession_changes:
+            if change.kind == "PERIOD_BOUNDARY":
+                ot_started = True
+            if ot_started:
+                ot_ids.add(change.to_possession_id)
+    if end is not None and (
+        end.ot_flag != ot_started or ("ot" in event_bins.values() and not end.ot_flag)
+    ):
+        timing_evidence = False
+
+    counts: dict[str, dict[Team, dict[str, list[int]]]] = {
+        metric: {
+            team: {label: [0, 0] for label in _TIME_BINS} for team in _TEAMS
+        }
+        for metric in ("ppp", "maur", "cssr")
+    }
+    for record in records:
+        if not isinstance(record, PossessionEndRecord):
+            continue
+        label = "ot" if record.possession_id in ot_ids else event_bins.get(record.start_event_idx)
+        if label is None:
+            timing_evidence = False
+            continue
+        counts["ppp"][record.team][label][1] += 1
+        for team in _TEAMS:
+            counts["ppp"][team][label][0] += record.points_by_team[team]
+
+    availability, unavailable_from, opponents, _ = _normalise_initial_memory(
+        known_memory_ids, memory_opponents, start
+    )
+    _add_memory_writes(records, availability, unavailable_from, opponents)
+    for record in records:
+        if not isinstance(record, DecisionRecord):
+            continue
+        label = event_bins.get(record.event_idx)
+        if label is None:
+            timing_evidence = False
+            continue
+        slot = counts["maur"][record.team][label]
+        slot[1] += 1
+        if _valid_memory_refs(record, availability, unavailable_from):
+            slot[0] += 1
+
+    cs_availability = _cs_availability(records)
+    for call in _tactic_calls(records):
+        label = event_bins.get(call.event_idx)
+        if label is None:
+            timing_evidence = False
+            continue
+        slot = counts["cssr"][call.team][label]
+        slot[1] += 1
+        if call.cs_key is not None:
+            visible_at = cs_availability[call.team].get(call.cs_key)
+            if visible_at is not None and visible_at <= call.event_idx:
+                slot[0] += 1
+
+    def rates(metric: str, overall: Mapping[str, RateMetric]) -> dict[str, dict[str, RateMetric]]:
+        return {
+            team: {
+                label: _rate(
+                    *counts[metric][team][label],
+                    complete=complete,
+                    evidence_complete=timing_evidence
+                    and overall[team].status in ("ok", "undefined", "not_applicable"),
+                    applicable=overall[team].status != "not_applicable",
+                )
+                for label in _TIME_BINS
+            }
+            for team in _TEAMS
+        }
+
+    return AdaptationMetrics(
+        float(duration) if valid_duration else None,
+        rates("ppp", ppp), rates("maur", maur), rates("cssr", cssr),
+    )
+
+
 def compute_game_metrics(
     records: GameLogIndex | Iterable[LogRecord],
     *,
@@ -573,6 +1062,10 @@ def compute_game_metrics(
     if window not in (1, 2):
         raise ValueError("window must be 1 or 2")
     items = _records(records)
+    memory_ids = (
+        {team: tuple(ids) for team, ids in known_memory_ids.items()}
+        if known_memory_ids is not None else None
+    )
     start, end, complete = _game_records(items)
     team_conditions = dict(start.team_conditions) if start is not None else {}
     _, decisions_by_team = _decision_map(items)
@@ -584,29 +1077,27 @@ def compute_game_metrics(
 
     points: defaultdict[Team, int] = defaultdict(int)
     possessions: defaultdict[Team, int] = defaultdict(int)
-    possession_ids: set[str] = set()
-    possession_ids_unique = True
     for record in items:
         if not isinstance(record, PossessionEndRecord):
             continue
-        if record.possession_id in possession_ids:
-            possession_ids_unique = False
-        possession_ids.add(record.possession_id)
         possessions[record.team] += 1
         for team in _TEAMS:
             points[team] += record.points_by_team[team]
+    possession_evidence = False
+    if complete:
+        try:
+            validate_possessions(items)
+        except PossessionError:
+            pass
+        else:
+            possession_evidence = True
     ppp = {}
     for team in _TEAMS:
-        evidence = end is not None
-        if end is not None:
-            evidence = (
-                possession_ids_unique
-                and len(possession_ids) == sum(possessions.values())
-                and points[team] == end.final_score[team]
-                and possessions[team] == end.totals.possessions_by_team[team]
-            )
         ppp[team] = _rate(
-            points[team], possessions[team], complete=complete, evidence_complete=evidence
+            points[team],
+            possessions[team],
+            complete=complete,
+            evidence_complete=possession_evidence,
         )
 
     maar = _instruction_adherence(
@@ -621,9 +1112,20 @@ def compute_game_metrics(
         decisions_by_team,
         complete,
         decision_evidence,
-        known_memory_ids,
+        memory_ids,
         memory_opponents,
         start,
+    )
+
+    assist_rate, turnover_rate, screen_conversion = _descriptive_outcome_rates(
+        items, end, complete, ppp
+    )
+    coordination_conflict_rate = _coordination_conflicts(
+        items, end, complete, decision_evidence
+    )
+    memory_growth = _memory_growth(items, start, end, complete, memory_ids)
+    adaptation = _adaptation_metrics(
+        items, start, end, complete, ppp, maur, cssr, memory_ids, memory_opponents
     )
 
     invalid_counts: defaultdict[Team, int] = defaultdict(int)
@@ -732,6 +1234,12 @@ def compute_game_metrics(
         sir=sir,
         sir_by_constraint=sir_by_constraint,
         referee_call_rate=referee_call_rate,
+        assist_rate=assist_rate,
+        turnover_rate=turnover_rate,
+        screen_to_shot_conversion=screen_conversion,
+        coordination_conflict_rate=coordination_conflict_rate,
+        memory_growth=memory_growth,
+        adaptation=adaptation,
         referee_calls_by_type=dict(sorted(calls_by_type.items())),
         memory_validation_complete=memory_complete,
         grounding_context_complete=grounding_complete,
