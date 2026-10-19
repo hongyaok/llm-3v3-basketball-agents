@@ -4,6 +4,11 @@ usage: set OPENROUTER_API_KEY, then run  python scripts/llm_smoke.py
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# ensure src/ is importable when running script directly
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from bball3x3.config import load_llm_config
 from bball3x3.llm import OpenRouterClient
