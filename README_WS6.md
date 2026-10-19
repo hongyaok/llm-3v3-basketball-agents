@@ -6,8 +6,10 @@ works offline: analysis reads JSONL files and does not call an LLM or require a
 live game object.
 
 The offline deliverables are implemented and tested with synthetic game logs.
-**Real-game integration is still pending:** the runner does not yet produce a
-complete game log. The [implementation plan](proposal/IMPLEMENTATION_PLAN.md#ws6--event-logging-metrics-and-analysis)
+**Real-game logging has landed since:** `runner/game.py` plays heuristic
+games while writing contracted records, verified with `read_game_log()`,
+`validate_possessions()`, metrics, transcript, and export on regulation and
+overtime games. The [implementation plan](proposal/IMPLEMENTATION_PLAN.md#ws6--event-logging-metrics-and-analysis)
 defines the deliverables; the [WS6 log contract](proposal/WS6_LOG_CONTRACT.md)
 defines the records and event timing.
 
@@ -171,5 +173,7 @@ To complete WS6 end to end, the engine, agents, coordination/memory system and
 referee must supply the contracted records, and the game runner must write
 them in event order through `EventLogger`. Then run a full heuristic game and
 verify its saved log with `read_game_log()`, `validate_possessions()`, metrics,
-export and transcript output. Until that succeeds, WS6 is **offline
-implementation complete; real-game integration pending**.
+export and transcript output. That path is now verified for heuristic games
+(`runs/game_101.jsonl`, regulation, and `runs/game_11.jsonl`, overtime).
+Remaining: coordination/memory/referee records (their workstreams), and
+model-terms enrichment in resolutions for the replay phase.

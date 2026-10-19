@@ -783,8 +783,10 @@ statistics/possession models, and adaptation plots are implemented and tested
 (109 tests passing; Ruff clean). `bball export` writes game, team, and
 possession CSV tables plus a JSON manifest; `bball stats` writes reproducible
 JSON results and `bball plots`
-writes PPP/MAUR/CSSR PNG curves plus pooled count/evidence CSV. Integration
-with a real game runner remains.
+writes PPP/MAUR/CSSR PNG curves plus pooled count/evidence CSV. Runner
+integration landed after this writing: `runner/game.py` writes contracted
+logs (verified on regulation and overtime games); model-terms/RNG-draw/
+position enrichment inside resolutions is deferred to the replay phase.
 
 **Event log (one JSONL file per game), record types**
 

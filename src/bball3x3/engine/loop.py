@@ -41,7 +41,7 @@ from bball3x3.engine.rules import (
     start_overtime,
 )
 from bball3x3.engine.state import create_initial_state, set_ball_holder
-from bball3x3.schemas.actions import ActionProposal
+from bball3x3.schemas.actions import ActionProposal, RemappedAction
 from bball3x3.schemas.state import Abilities, GameState
 
 
@@ -73,8 +73,15 @@ def play_heuristic_game(
     start_state: GameState | None = None,
     agent_factory: Callable[[str], BasePlayer] | None = None,
     collect_history: bool = False,
+    on_event: Callable[[dict], None] | None = None,
 ) -> dict:
-    """Play one full game (heuristic agents unless a factory is given)."""
+    """Play one full game (heuristic agents unless a factory is given).
+
+    When ``on_event`` is supplied, the loop reports ``game_start`` once and
+    one payload per completed transition. The payloads carry the raw and
+    legalized proposals, the resolved event facts, any new violations, and a
+    ``finished`` flag with ``end_reason``. A ``None`` hook changes nothing.
+    """
     config = config or SimulationConfig()
     court = Court(config.court)
     rng = GameRNG.from_seed(seed)
@@ -86,6 +93,16 @@ def play_heuristic_game(
             abilities_map = None
 
     state = start_state if start_state is not None else create_initial_state(config, rng)
+    if on_event is not None:
+        on_event(
+            {
+                "type": "game_start",
+                "state": state,
+                "seed": seed,
+                "config": config,
+                "roster_path": roster_path,
+            }
+        )
     if agent_factory is None:
 
         def agent_factory(pid: str) -> HeuristicPlayer:
@@ -111,6 +128,7 @@ def play_heuristic_game(
             history.append(prev)
         proposals: dict[str, ActionProposal] = {}
         legalized: dict[str, ActionProposal] = {}
+        remaps: dict[str, RemappedAction | None] = {}
         for pid, agent in agents.items():
             raw = agent.decide(state)
             proposals[pid] = raw
@@ -119,6 +137,7 @@ def play_heuristic_game(
             if record is not None:
                 invalid += 1
             legalized[pid] = fixed
+            remaps[pid] = record
         actions = {pid: p.action.upper() for pid, p in legalized.items()}
 
         # Loose ball: rebound lottery decides the next holder.
@@ -159,10 +178,34 @@ def play_heuristic_game(
                 if outcome["is_offensive"]
                 else "DEFENSIVE_REBOUND",
             }
-            violations.extend(collect_violations(prev, state, event, court, config))
+            found = collect_violations(prev, state, event, court, config)
+            violations.extend(found)
             if state.offense != prev.offense:
                 possessions[state.offense] = possessions.get(state.offense, 0) + 1
             events += 1
+            state.event_idx = events
+            done = _finished(state, config, ot_baseline)
+            if on_event is not None:
+                on_event(
+                    {
+                        "type": "event",
+                        "event_idx": events,
+                        "prev": prev,
+                        "state": state,
+                        "proposals": proposals,
+                        "legalized": legalized,
+                        "remaps": remaps,
+                        "actions": actions,
+                        "event": event,
+                        "new_violations": found,
+                        "holder": None,
+                        "handler_action": None,
+                        "contact_detected": False,
+                        "rebound": True,
+                        "finished": done,
+                        "end_reason": _end_reason(state, config) if done else None,
+                    }
+                )
             if _finished(state, config, ot_baseline):
                 break
             continue
@@ -437,10 +480,34 @@ def play_heuristic_game(
                 }
             )
 
-        violations.extend(collect_violations(prev, state, event, court, config))
+        found = collect_violations(prev, state, event, court, config)
+        violations.extend(found)
         if state.offense != prev.offense:
             possessions[state.offense] = possessions.get(state.offense, 0) + 1
         events += 1
+        state.event_idx = events
+        done = _finished(state, config, ot_baseline)
+        if on_event is not None:
+            on_event(
+                {
+                    "type": "event",
+                    "event_idx": events,
+                    "prev": prev,
+                    "state": state,
+                    "proposals": proposals,
+                    "legalized": legalized,
+                    "remaps": remaps,
+                    "actions": actions,
+                    "event": event,
+                    "new_violations": found,
+                    "holder": holder,
+                    "handler_action": handler_action,
+                    "contact_detected": bool(contact.contact_detected),
+                    "rebound": False,
+                    "finished": done,
+                    "end_reason": _end_reason(state, config) if done else None,
+                }
+            )
 
         if state.phase == "LIVE" and is_tied_at_expiry(state):
             ot_baseline = start_overtime(state, config)
@@ -467,6 +534,15 @@ def play_heuristic_game(
         "history": history,
         "final_state": state,
     }
+
+
+def _end_reason(state, config: SimulationConfig) -> str:
+    """Classify a finished game for the terminal resolution record."""
+    if state.phase == "OT":
+        return "OT_WIN"
+    if max(state.score.values()) >= config.rules.win_score:
+        return "WIN_SCORE"
+    return "CLOCK_EXPIRED"
 
 
 def _finished(
