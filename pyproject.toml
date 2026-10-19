@@ -13,7 +13,18 @@ dependencies = [
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
     "tenacity>=8.2.0",
+    "numpy>=2.4.6",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "pandas>=2.0",
+    "scipy>=1.11",
+    "statsmodels>=0.14",
+    "matplotlib>=3.8",
 ]
+
+[project.scripts]
+bball = "bball3x3.cli:app"
 
 [project.optional-dependencies]
 dev = [
@@ -32,3 +43,8 @@ ignore = []
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
