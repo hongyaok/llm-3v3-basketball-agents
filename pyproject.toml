@@ -19,6 +19,8 @@ dependencies = [
     "scipy>=1.11",
     "statsmodels>=0.14",
     "matplotlib>=3.8",
+    "lxml>=5.0.0",
+    "jinja2>=3.1.0",
 ]
 
 [project.scripts]
@@ -28,6 +30,7 @@ bball = "bball3x3.cli:app"
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.3.0",
+    "hypothesis>=6.0.0",
 ]
 
 [tool.ruff]
@@ -41,8 +44,13 @@ ignore = []
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "live: manual tests against live OpenRouter API",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.3.0",
+    "hypothesis>=6.0.0",
 ]
