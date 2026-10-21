@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from .actions import ConductType
 from .memory import CSProposal, MemoryProposal
 from .messages import CaptainCall, Message
 
@@ -12,6 +13,8 @@ class CoordinationConfig(BaseModel):
 class AgentOutput(BaseModel):
     action: str
     target: str | None = None
+    conduct: ConductType | None = None
+    conduct_target: str | None = None
     memory_ref: list[str] | None = None
     messages: list[Message] = Field(default_factory=list)
     captain_call: CaptainCall | None = None

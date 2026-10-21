@@ -37,11 +37,17 @@ InvalidReason = Literal[
     "BAD_TARGET",
 ]
 
+ConductType = Literal["TECHNICAL", "UNSPORTSMANLIKE"]
+
 class ActionProposal(BaseModel):
     player_id: str
     action: str
     target: str | None = None
     memory_ref: list[str] | None = None
+    # Explicit simulation evidence. An unsportsmanlike signal must name the
+    # opposing player contacted; the engine verifies the resolved contact.
+    conduct: ConductType | None = None
+    conduct_target: str | None = None
 
 class RemappedAction(BaseModel):
     player_id: str

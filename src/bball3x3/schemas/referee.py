@@ -19,6 +19,13 @@ JudgementViolation = Literal[
     "STALLING",
 ]
 
+# These outcomes belong to the engine, regardless of which referee backend
+# proposed them. Keep the boundary shared by the rule referee and game loop.
+OBJECTIVE_VIOLATIONS = frozenset({
+    "SHOT_CLOCK", "SHOT_CLOCK_VIOLATION", "OUT_OF_BOUNDS", "CLOCK_EXPIRY",
+    "CLEARING", "CLEARING_VIOLATION",
+})
+
 class RefereeDecision(BaseModel):
     call: Literal["NONE", "FOUL", "VIOLATION"] = "NONE"
     offender: str | None = None

@@ -34,13 +34,16 @@ def detect_contact(
     actions: dict[str, str],
     ball_handler_id: str | None,
     primary_defender_id: str | None,
+    action_targets: dict[str, str | None] | None = None,
     rebound_phase: bool = False,
     rng: GameRNG,
     config: SimulationConfig,
 ) -> tuple[ContactEvent, dict]:
-    """Roll contact draws and return (ContactEvent, rng_draws)."""
+    """Annotate contact only when the relevant opposing players are identifiable."""
     params = contact_params(config)
     draws: dict[str, float] = {}
+    court = Court(config.court)
+    action_targets = action_targets or {}
 
     upper = {pid: act.upper() for pid, act in actions.items()}
     candidates: list[tuple[str, str, str, float]] = []
@@ -68,41 +71,69 @@ def detect_contact(
                 )
 
     for pid, act in upper.items():
-        if act == "SCREEN":
-            draw = rng.random("contact")
-            draws.setdefault(f"screen_{pid}", draw)
-            if draw < float(params["screen_prob"]):
-                candidates.append((pid, pid, "SCREEN_CONTACT", draw))
-                break
+        if act != "SCREEN" or pid not in state.players:
+            continue
+        target = action_targets.get(pid)
+        if target is None and ball_handler_id in state.players:
+            target = ball_handler_id
+        if target not in state.players or state.players[target].team != state.players[pid].team:
+            continue
+        defender = state.matchups.get(target)
+        if (defender not in state.players
+                or state.players[defender].team == state.players[pid].team
+                or court.distance(state.players[pid].pos, state.players[defender].pos)
+                > 2 * court.cell_m):
+            continue
+        draw = rng.random("contact")
+        draws[f"screen_{pid}"] = draw
+        if draw < float(params["screen_prob"]):
+            candidates.append((pid, defender, "SCREEN_CONTACT", draw))
+            break
 
     if rebound_phase:
+        # A box-out against a nearby crasher identifies the contact initiator
+        # and recipient. Whether that contact is illegal remains the referee's call.
+        pairs = [
+            (court.distance(state.players[boxer].pos, state.players[crasher].pos),
+             boxer, crasher)
+            for boxer, boxer_action in upper.items()
+            for crasher, crasher_action in upper.items()
+            if boxer_action == "BOX_OUT" and crasher_action == "CRASH_BOARDS"
+            and boxer in state.players and crasher in state.players
+            and state.players[boxer].team != state.players[crasher].team
+            and court.distance(state.players[boxer].pos, state.players[crasher].pos)
+            <= 2 * court.cell_m
+            and court.distance(state.players[boxer].pos, state.ball.pos)
+            <= 3 * court.cell_m
+            and court.distance(state.players[crasher].pos, state.ball.pos)
+            <= 3 * court.cell_m
+        ]
         draw = rng.random("contact")
         draws["rebound"] = draw
-        if draw < float(params["rebound_prob"]):
-            candidates.append(("REBOUND", "REBOUND", "LOOSE_BALL", draw))
+        if pairs and draw < float(params["rebound_prob"]):
+            _, boxer, crasher = min(pairs)
+            candidates.append((boxer, crasher, "LOOSE_BALL", draw))
 
     if not candidates:
         return ContactEvent(contact_detected=False), draws
 
     first_off, first_def, contact_type, _ = candidates[0]
-    if first_off == "REBOUND":
-        involved = [pid for pid, a in upper.items() if a in ("CRASH_BOARDS", "BOX_OUT")]
-        loc = state.ball.pos
-    elif first_off == first_def:
-        involved = [first_off]
-        loc = state.players[first_off].pos
-    else:
-        involved = [first_off, first_def]
-        loc = _midpoint(
-            state.players[first_off].pos, state.players[first_def].pos
-        )
+    involved = [first_off, first_def]
+    loc = _midpoint(state.players[first_off].pos, state.players[first_def].pos)
+    details: dict = {"trigger_actions": upper}
+    if contact_type == "SCREEN_CONTACT":
+        details["screen_target"] = action_targets.get(first_off) or ball_handler_id
+        details["contact_recipient"] = first_def
+    elif contact_type == "LOOSE_BALL":
+        details["contact_initiator"] = first_off
+        details["contact_recipient"] = first_def
     return (
         ContactEvent(
             contact_detected=True,
             players_involved=involved,
             contact_location=loc,
             contact_type=contact_type,
-            details={"trigger_actions": upper},
+            details=details,
         ),
         draws,
     )
@@ -140,6 +171,12 @@ def referee_query_text(ref_state: RefereeState) -> str:
     """Deterministic templated query over event + contact fields (WS5)."""
     event = ref_state.current_event
     contact = ref_state.contact_event
+    conduct = event.get("conduct_evidence")
+    conduct_text = (
+        f"; conduct={conduct['kind']} actor={conduct['actor']}"
+        f" target={conduct.get('target', 'none')}"
+        if isinstance(conduct, dict) else ""
+    )
     return (
         f"{event.get('event_type', 'UNKNOWN')}; "
         f"contact={contact.contact_detected}; "
@@ -147,7 +184,7 @@ def referee_query_text(ref_state: RefereeState) -> str:
         f"{','.join(contact.players_involved) or 'none'} "
         f"at {contact.contact_location}; "
         f"ball={ref_state.ball.status} holder={ref_state.ball_handler}; "
-        f"possession={ref_state.possession}"
+        f"possession={ref_state.possession}{conduct_text}"
     )
 
 

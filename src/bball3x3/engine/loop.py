@@ -6,7 +6,7 @@ contact -> rules -> fatigue -> invariants) so WS1 can close with
 ``heuristic full games, SIR = 0`` before the asyncio runner exists.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from bball3x3.agents.base import BasePlayer
 from bball3x3.agents.heuristic_player import HeuristicPlayer
@@ -14,12 +14,14 @@ from bball3x3.config import SimulationConfig, load_roster_config
 from bball3x3.engine.abilities import build_abilities_map
 from bball3x3.engine.actions import remap_invalid_action
 from bball3x3.engine.clock import advance_action_clock, is_shot_clock_violation
-from bball3x3.engine.contact import detect_contact
+from bball3x3.engine.conduct import collect_conduct_evidence
+from bball3x3.engine.contact import build_referee_state, detect_contact, referee_query_text
 from bball3x3.engine.court import ZONES, Court
 from bball3x3.engine.invariants import collect_violations
 from bball3x3.engine.movement import movement_label, speed_label
 from bball3x3.engine.resolvers import (
     resolve_drive,
+    resolve_free_throw,
     resolve_pass,
     resolve_rebound,
     resolve_screen,
@@ -32,6 +34,7 @@ from bball3x3.engine.rules import (
     apply_made_shot,
     apply_missed_shot,
     apply_rebound_winner,
+    apply_referee_decision,
     apply_shot_clock_violation,
     apply_turnover,
     is_game_over,
@@ -41,7 +44,9 @@ from bball3x3.engine.rules import (
     start_overtime,
 )
 from bball3x3.engine.state import create_initial_state, set_ball_holder
+from bball3x3.referee import RuleBasedReferee
 from bball3x3.schemas.actions import ActionProposal, RemappedAction
+from bball3x3.schemas.referee import OBJECTIVE_VIOLATIONS, RefereeDecision, RefereeState
 from bball3x3.schemas.state import Abilities, GameState
 
 
@@ -65,6 +70,126 @@ def _step_toward(
     return _clamp((x, y), court)
 
 
+def _judge_referee_event(
+    referee: RuleBasedReferee, ref_state: RefereeState,
+) -> tuple[RefereeDecision, dict | None, str | None]:
+    """Reject engine-owned calls before they can mutate game state."""
+    proposed = referee.judge(ref_state)
+    if isinstance(proposed, RefereeDecision):
+        raw = proposed.model_dump(warnings=False)
+    elif isinstance(proposed, Mapping):
+        raw = dict(proposed)
+    else:
+        raise TypeError("Referee.judge() must return a RefereeDecision or mapping")
+    event = ref_state.current_event
+    call = raw.get("call")
+    violation = raw.get("violation_type")
+    if (call == "VIOLATION" and isinstance(violation, str)
+            and violation in OBJECTIVE_VIOLATIONS):
+        reason = "OBJECTIVE_VIOLATION"
+    elif call != "NONE" and (
+        event.get("objective_violation") is True
+        or event.get("event_type") in OBJECTIVE_VIOLATIONS
+    ):
+        reason = "OBJECTIVE_EVENT"
+    else:
+        return RefereeDecision.model_validate(raw), None, None
+    return RefereeDecision(), raw, reason
+
+
+def _apply_referee_call(
+    *,
+    state: GameState,
+    prev: GameState,
+    event: dict,
+    decision: RefereeDecision,
+    config: SimulationConfig,
+    court: Court,
+    rng: GameRNG,
+    abilities_map: dict[str, Abilities] | None,
+    fallback_shooter: str | None,
+) -> None:
+    """Apply the judged call and describe the final transition for logging."""
+    if decision.call == "NONE":
+        return
+
+    if decision.call == "VIOLATION":
+        offender_team = (
+            state.players[decision.offender].team
+            if decision.offender in state.players else state.offense
+        )
+        beneficiary = other_team(offender_team)
+        if state.offense != beneficiary:
+            apply_turnover(state, beneficiary, config)
+        set_ball_holder(state, f"{beneficiary}1")
+        state.shot_clock_s = config.rules.shot_clock_s
+        reason = "REFEREE_VIOLATION"
+        turnover = prev.offense == offender_team
+    else:
+        shot_value = (
+            court.shot_value(state.players[fallback_shooter].pos)
+            if fallback_shooter in state.players else 1
+        )
+        penalty = apply_referee_decision(
+            state, decision, config,
+            was_shooting=decision.foul_type == "SHOOTING_FOUL",
+            shot_value=shot_value,
+        )
+        event["foul_called"] = True
+        foul_team = penalty["foul_team"]
+        beneficiary = other_team(foul_team)
+        if state.offense != beneficiary:
+            apply_turnover(state, beneficiary, config)
+        shooter = decision.fouled_player
+        if shooter not in state.players or state.players[shooter].team != beneficiary:
+            shooter = fallback_shooter
+        if shooter not in state.players or state.players[shooter].team != beneficiary:
+            shooter = f"{beneficiary}1"
+        set_ball_holder(state, shooter)
+
+        # An offensive foul gives the ball to the other team without a bonus.
+        free_throws = (
+            0 if decision.foul_type == "OFFENSIVE_FOUL"
+            else penalty["free_throws"]
+        )
+        retain_possession = penalty["retain_possession"]
+        reason = "OFFENSIVE_FOUL" if decision.foul_type == "OFFENSIVE_FOUL" else "REFEREE_FOUL"
+        turnover = decision.foul_type == "OFFENSIVE_FOUL" and prev.offense == foul_team
+        if free_throws:
+            points = 0
+            last_made = False
+            for _ in range(free_throws):
+                ft, _, _ = resolve_free_throw(
+                    shooter_id=shooter, abilities_map=abilities_map,
+                    config=config, rng=rng, fatigue=state.players[shooter].fatigue,
+                )
+                last_made = ft["made"]
+                points += int(last_made)
+            if points:
+                state.score[beneficiary] += points
+                event.update(
+                    scored=True, free_throw_team=beneficiary,
+                    free_throw_points=points,
+                )
+            if not retain_possession:
+                if last_made:
+                    apply_turnover(state, foul_team, config)
+                    set_ball_holder(state, f"{foul_team}1")
+                    reason = "FREE_THROW_MADE"
+                else:
+                    apply_missed_shot(state)
+                    event["rebound_after_miss"] = True
+        if state.ball.status == "HELD":
+            state.shot_clock_s = config.rules.shot_clock_s
+
+    changed = state.offense != prev.offense
+    event["possession_changed"] = changed
+    event["possession_reason"] = reason if changed else None
+    event["turnover"] = turnover and changed
+    event["shot_clock_reset"] = True
+    event["reset_reason"] = "POSSESSION_CHANGE" if changed else "CHECK_BALL"
+
+
 def play_heuristic_game(
     seed: int = 0,
     config: SimulationConfig | None = None,
@@ -74,17 +199,20 @@ def play_heuristic_game(
     agent_factory: Callable[[str], BasePlayer] | None = None,
     collect_history: bool = False,
     on_event: Callable[[dict], None] | None = None,
+    referee: RuleBasedReferee | None = None,
 ) -> dict:
     """Play one full game (heuristic agents unless a factory is given).
 
     When ``on_event`` is supplied, the loop reports ``game_start`` once and
     one payload per completed transition. The payloads carry the raw and
     legalized proposals, the resolved event facts, any new violations, and a
-    ``finished`` flag with ``end_reason``. A ``None`` hook changes nothing.
+    ``finished`` flag with ``end_reason``. The seedable rule referee judges
+    every transition and its call is applied before the state is logged.
     """
     config = config or SimulationConfig()
     court = Court(config.court)
     rng = GameRNG.from_seed(seed)
+    referee = referee or RuleBasedReferee(seed=seed)
     abilities_map: dict[str, Abilities] | None = None
     if roster_path is not None:
         try:
@@ -178,6 +306,29 @@ def play_heuristic_game(
                 if outcome["is_offensive"]
                 else "DEFENSIVE_REBOUND",
             }
+            contact, _ = detect_contact(
+                state=state, actions=actions, ball_handler_id=None,
+                primary_defender_id=None, rebound_phase=True, rng=rng, config=config,
+                action_targets={pid: proposal.target for pid, proposal in legalized.items()},
+            )
+            conduct_fields = collect_conduct_evidence(state, legalized, contact)
+            if conduct_fields:
+                event["conduct_evidence"] = conduct_fields["conduct_evidence"]
+            state.event_idx = events + 1
+            ref_state = build_referee_state(
+                state=state, contact=contact,
+                current_event={"event_type": "REBOUND", "actions": actions,
+                               **conduct_fields},
+            )
+            referee_decision, rejected_output, rejection_reason = _judge_referee_event(
+                referee, ref_state,
+            )
+            referee_query = referee_query_text(ref_state)
+            _apply_referee_call(
+                state=state, prev=prev, event=event, decision=referee_decision,
+                config=config, court=court, rng=rng,
+                abilities_map=abilities_map, fallback_shooter=outcome["winner"],
+            )
             found = collect_violations(prev, state, event, court, config)
             violations.extend(found)
             if state.offense != prev.offense:
@@ -200,7 +351,11 @@ def play_heuristic_game(
                         "new_violations": found,
                         "holder": None,
                         "handler_action": None,
-                        "contact_detected": False,
+                        "contact_detected": contact.contact_detected,
+                        "referee_query": referee_query,
+                        "referee_decision": referee_decision,
+                        "referee_rejected_output": rejected_output,
+                        "referee_rejection_reason": rejection_reason,
                         "rebound": True,
                         "finished": done,
                         "end_reason": _end_reason(state, config) if done else None,
@@ -452,11 +607,11 @@ def play_heuristic_game(
             actions=actions,
             ball_handler_id=holder,
             primary_defender_id=primary,
+            action_targets={pid: proposal.target for pid, proposal in legalized.items()},
             rebound_phase=False,
             rng=rng,
             config=config,
         )
-        _ = contact
         clock_res = advance_action_clock(state, handler_action, config)
         update_fatigue(
             state=state,
@@ -466,7 +621,33 @@ def play_heuristic_game(
         )
         event["elapsed_s"] = clock_res.elapsed_s
 
-        if is_shot_clock_violation(state):
+        state.event_idx = events + 1
+        conduct_fields = collect_conduct_evidence(state, legalized, contact)
+        if conduct_fields:
+            event["conduct_evidence"] = conduct_fields["conduct_evidence"]
+        ref_state = build_referee_state(
+            state=state,
+            contact=contact,
+            current_event={
+                "event_type": "SHOT_CLOCK" if is_shot_clock_violation(state)
+                else handler_action,
+                "actions": actions,
+                "objective_violation": bool(event.get("possession_changed")),
+                "was_shooting": handler_action == "SHOOT",
+                **conduct_fields,
+            },
+        )
+        referee_decision, rejected_output, rejection_reason = _judge_referee_event(
+            referee, ref_state,
+        )
+        referee_query = referee_query_text(ref_state)
+        _apply_referee_call(
+            state=state, prev=prev, event=event, decision=referee_decision,
+            config=config, court=court, rng=rng,
+            abilities_map=abilities_map, fallback_shooter=holder,
+        )
+
+        if referee_decision.call == "NONE" and is_shot_clock_violation(state):
             apply_shot_clock_violation(state, config)
             set_ball_holder(state, f"{state.offense}1")
             state.needs_clear = True
@@ -503,6 +684,10 @@ def play_heuristic_game(
                     "holder": holder,
                     "handler_action": handler_action,
                     "contact_detected": bool(contact.contact_detected),
+                    "referee_query": referee_query,
+                    "referee_decision": referee_decision,
+                    "referee_rejected_output": rejected_output,
+                    "referee_rejection_reason": rejection_reason,
                     "rebound": False,
                     "finished": done,
                     "end_reason": _end_reason(state, config) if done else None,
