@@ -136,7 +136,7 @@ sequenceDiagram
 | Prompts | `jinja2` templates | Versioned; the template hash is logged |
 | Embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`), local | Memory/CS similarity and RAG |
 | Vector store | NumPy cosine (FAISS optional) | The rulebook is small |
-| Rulebook parsing | `pdfplumber` | Clause-level chunks |
+| Rulebook parsing | `pypdf` (layout text extraction) | Clause-level chunks |
 | Analysis | `pandas`, `pyarrow`, `scipy`, `statsmodels`, `matplotlib` | |
 | CLI | `typer` | `run-game`, `run-experiment`, `build-index`, `metrics`, `transcript` |
 | Tests | `pytest`, `hypothesis` | Property-based tests on engine invariants |

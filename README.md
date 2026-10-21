@@ -66,6 +66,68 @@ uv run ruff check .
 # or if venv is activated: ruff check .
 ```
 
+## referee rulebook index
+
+Place the official 3x3 rulebook PDF at
+`data/rules/fiba-3x3-basketball-rules-full-version.pdf`, then run:
+
+```bash
+uv run --extra rag bball build-index
+```
+
+This extracts numbered referee-relevant clauses into `data/rules/chunks.jsonl`
+and aligned, normalized vectors into `data/rules/embeddings.npy`. The
+`index_manifest.json` records the PDF hash, embedding backend/model, dimensions,
+and category counts. The default backend uses the configured MiniLM semantic
+model; its weights may download on first use. For a fully local fallback with
+no model dependency, use deterministic lexical hash vectors instead:
+
+```bash
+uv run bball build-index --backend hash --force
+```
+
+Use the same embedding backend and model for future retrieval queries. The
+indexer refuses to replace existing artifacts unless `--force` is supplied.
+
+To retrieve the three most relevant excerpts for a `RefereeState`:
+
+```python
+from bball3x3.referee import RuleRetriever
+
+retriever = RuleRetriever("data/rules")  # load once, then reuse for each state
+result = retriever.retrieve(referee_state)
+print(result.query, result.chunk_ids)
+for rule in result.rules:
+    print(rule.id, rule.category, rule.score, rule.text)
+```
+
+Retrieval filters by event, contact type, and ball status before cosine ranking.
+The result includes source PDF pages. The retriever checks index integrity and
+uses the same embedding backend/model recorded in the manifest. This is a
+standalone retrieval API that the LLM referee also uses during games.
+
+The asynchronous `LLMReferee` accepts an LLM backend implementing
+`complete(messages, params)` and a `RuleRetriever`. Its `judge_with_trace(state)`
+returns the effective decision, retrieved rule IDs, raw model reply, parse
+status, and request accounting. `judge(state)` returns only the decision.
+Malformed or ungrounded XML becomes a `NONE` decision with `REF_PARSE_FAIL` in
+the trace; `result.as_log_record(event_idx)` builds a typed WS6 referee record
+with the raw reply and failure status. Logged games bridge to the async referee
+on one persistent per-game event loop and apply its effective call before
+recording the next state. To run one, set `referee.enabled: true` and
+`referee.backend: llm` in `configs/llm.yaml`, set `OPENROUTER_API_KEY`, and run:
+
+```bash
+uv run --extra rag python -m bball3x3.runner.game \
+  --llm-config configs/llm.yaml --rule-index-dir data/rules \
+  --path runs/llm_game.jsonl
+```
+
+Without `--llm-config`, or when the referee is disabled, games keep the
+rule-based referee. The log includes the LLM model, token counts, cost,
+latency, retrieved chunk IDs, raw output, and any `REF_PARSE_FAIL` reason.
+Provider failures propagate; only malformed decisions fall back to `NONE`.
+
 ## possession transcripts
 
 After installing the package, print a possession from a saved JSONL game log:

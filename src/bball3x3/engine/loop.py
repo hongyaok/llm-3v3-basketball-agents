@@ -44,7 +44,7 @@ from bball3x3.engine.rules import (
     start_overtime,
 )
 from bball3x3.engine.state import create_initial_state, set_ball_holder
-from bball3x3.referee import RuleBasedReferee
+from bball3x3.referee import Referee, RuleBasedReferee
 from bball3x3.schemas.actions import ActionProposal, RemappedAction
 from bball3x3.schemas.referee import OBJECTIVE_VIOLATIONS, RefereeDecision, RefereeState
 from bball3x3.schemas.state import Abilities, GameState
@@ -71,7 +71,7 @@ def _step_toward(
 
 
 def _judge_referee_event(
-    referee: RuleBasedReferee, ref_state: RefereeState,
+    referee: Referee, ref_state: RefereeState,
 ) -> tuple[RefereeDecision, dict | None, str | None]:
     """Reject engine-owned calls before they can mutate game state."""
     proposed = referee.judge(ref_state)
@@ -199,7 +199,7 @@ def play_heuristic_game(
     agent_factory: Callable[[str], BasePlayer] | None = None,
     collect_history: bool = False,
     on_event: Callable[[dict], None] | None = None,
-    referee: RuleBasedReferee | None = None,
+    referee: Referee | None = None,
 ) -> dict:
     """Play one full game (heuristic agents unless a factory is given).
 
@@ -320,10 +320,10 @@ def play_heuristic_game(
                 current_event={"event_type": "REBOUND", "actions": actions,
                                **conduct_fields},
             )
+            referee_query = referee_query_text(ref_state)
             referee_decision, rejected_output, rejection_reason = _judge_referee_event(
                 referee, ref_state,
             )
-            referee_query = referee_query_text(ref_state)
             _apply_referee_call(
                 state=state, prev=prev, event=event, decision=referee_decision,
                 config=config, court=court, rng=rng,
@@ -356,6 +356,7 @@ def play_heuristic_game(
                         "referee_decision": referee_decision,
                         "referee_rejected_output": rejected_output,
                         "referee_rejection_reason": rejection_reason,
+                        "referee_trace": getattr(referee, "last_result", None),
                         "rebound": True,
                         "finished": done,
                         "end_reason": _end_reason(state, config) if done else None,
@@ -637,10 +638,10 @@ def play_heuristic_game(
                 **conduct_fields,
             },
         )
+        referee_query = referee_query_text(ref_state)
         referee_decision, rejected_output, rejection_reason = _judge_referee_event(
             referee, ref_state,
         )
-        referee_query = referee_query_text(ref_state)
         _apply_referee_call(
             state=state, prev=prev, event=event, decision=referee_decision,
             config=config, court=court, rng=rng,
@@ -688,6 +689,7 @@ def play_heuristic_game(
                     "referee_decision": referee_decision,
                     "referee_rejected_output": rejected_output,
                     "referee_rejection_reason": rejection_reason,
+                    "referee_trace": getattr(referee, "last_result", None),
                     "rebound": False,
                     "finished": done,
                     "end_reason": _end_reason(state, config) if done else None,
