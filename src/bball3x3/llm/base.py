@@ -17,6 +17,7 @@ class LLMResponse(BaseModel):
     latency_ms: float = 0.0
     cached: bool = False
     attempts: int = 1
+    finish_reason: str | None = None
 
 # anything that can answer a chat request: the real client or FakeLLM
 class LLMBackend(Protocol):

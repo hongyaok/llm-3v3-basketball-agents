@@ -1,6 +1,6 @@
-
 """Action legality checks and deterministic invalid-action remapping."""
 
+from bball3x3.engine.court import ZONES
 from bball3x3.schemas.actions import (
     ActionProposal,
     RemappedAction,
@@ -63,6 +63,64 @@ REBOUND_ACTIONS = {
     "GET_BACK",
 }
 
+DRIVE_DIRECTIONS: tuple[str, ...] = ("LEFT", "RIGHT", "MIDDLE", "BASELINE")
+
+ZONE_TARGET_ACTIONS = {
+    "MOVE",
+    "CUT",
+    "CUT_BASELINE",
+    "SPOT_UP",
+    "POP",
+    "ROLL",
+    "GET_BACK",
+    "DRIBBLE_MOVE",
+    "POST_UP",
+}
+
+OPTIONAL_OPPONENT_TARGET_ACTIONS = {
+    "DEFEND",
+    "CONTEST",
+    "STEAL_ATTEMPT",
+}
+
+NO_TARGET_ACTIONS = {
+    "SHOOT",
+    "HOLD",
+    "CLEAR",
+    "HELP_PAINT",
+    "CRASH_BOARDS",
+    "BOX_OUT",
+}
+
+# Maps each action to (target_kind, required)
+# target_kind in {"teammate", "opponent", "player", "zone", "direction", "none"}
+TARGET_SPEC: dict[str, tuple[str, bool]] = {
+    "PASS": ("teammate", True),
+    "SWITCH": ("teammate", True),
+    "SCREEN": ("player", True),
+    "DOUBLE_TEAM": ("opponent", True),
+    "DENY": ("opponent", True),
+    "DEFEND": ("opponent", False),
+    "CONTEST": ("opponent", False),
+    "STEAL_ATTEMPT": ("opponent", False),
+    "MOVE": ("zone", False),
+    "CUT": ("zone", False),
+    "CUT_BASELINE": ("zone", False),
+    "SPOT_UP": ("zone", False),
+    "POP": ("zone", False),
+    "ROLL": ("zone", False),
+    "GET_BACK": ("zone", False),
+    "DRIBBLE_MOVE": ("zone", False),
+    "POST_UP": ("zone", False),
+    "DRIVE": ("direction", False),
+    "SHOOT": ("none", False),
+    "HOLD": ("none", False),
+    "CLEAR": ("none", False),
+    "HELP_PAINT": ("none", False),
+    "CRASH_BOARDS": ("none", False),
+    "BOX_OUT": ("none", False),
+}
+
 
 def _role(state: GameState, player_id: str) -> str:
     """Classify a player for spec fallback selection."""
@@ -111,6 +169,39 @@ def get_legal_actions(
     return OFF_BALL_ACTIONS.copy()
 
 
+def format_legal_action_hint(state: GameState, player_id: str, action: str) -> str:
+    """Format a legal action with its target hint for the WS3 observation."""
+    act = action.upper()
+    kind, required = TARGET_SPEC.get(act, ("none", False))
+    if kind == "none":
+        return act
+    actor = state.players[player_id]
+    teammates = sorted(
+        pid for pid, p in state.players.items() if p.team == actor.team and pid != player_id
+    )
+    opponents = sorted(
+        pid for pid, p in state.players.items() if p.team != actor.team
+    )
+    if kind == "teammate":
+        opts = " | ".join(teammates)
+        return f"{act} (target: {opts})"
+    if kind == "opponent":
+        opts = " | ".join(opponents)
+        label = "target" if required else "optional target"
+        return f"{act} ({label}: {opts})"
+    if kind == "player":
+        opts = " | ".join(teammates + opponents)
+        return f"{act} (target: {opts})"
+    if kind == "zone":
+        label = "target" if required else "optional target"
+        return f"{act} ({label}: zone)"
+    if kind == "direction":
+        opts = " | ".join(DRIVE_DIRECTIONS)
+        label = "target" if required else "optional target"
+        return f"{act} ({label}: {opts})"
+    return act
+
+
 def validate_action(
     state: GameState,
     proposal: ActionProposal,
@@ -128,6 +219,13 @@ def validate_action(
         )
 
     action = proposal.action.upper()
+
+    if action == "__PARSE_FAIL__":
+        return (
+            False,
+            "PARSE_FAIL",
+            "LLM output failed structured parsing after repair attempts.",
+        )
 
     if action not in ALL_ACTIONS:
         return (
@@ -154,55 +252,78 @@ def validate_action(
             f"{action} is not legal for {proposal.player_id}",
         )
 
-    if action in TARGET_PLAYER_ACTIONS:
-        if not proposal.target:
+    kind, required = TARGET_SPEC.get(action, ("none", False))
+    raw_target = proposal.target.strip() if proposal.target else None
+    if raw_target and raw_target.upper() in ("NONE", "NULL"):
+        raw_target = None
+
+    if kind == "none":
+        if raw_target is not None:
+            return True, None, f"WARN: target {raw_target!r} ignored for {action}"
+        return True, None, ""
+
+    if raw_target is None:
+        if required:
             return (
                 False,
                 "BAD_TARGET",
-                f"{action} requires a target player.",
+                f"{action} requires a target.",
             )
+        return True, None, ""
 
-        if proposal.target not in state.players:
+    target_upper = raw_target.upper()
+
+    if kind in ("teammate", "opponent", "player"):
+        if target_upper not in state.players:
             return (
                 False,
                 "BAD_TARGET",
                 f"Unknown target player: {proposal.target}",
             )
 
-        actor = state.players[proposal.player_id]
-        target = state.players[proposal.target]
-
-        if action in {"PASS", "SCREEN"}:
-            if target.team != actor.team:
-                return (
-                    False,
-                    "BAD_TARGET",
-                    f"{action} requires a teammate target.",
-                )
-
-        # SWITCH swaps assignments with a teammate (target semantics, WS1).
-        if action == "SWITCH":
-            if target.team != actor.team:
-                return (
-                    False,
-                    "BAD_TARGET",
-                    "SWITCH requires a teammate to swap assignments with.",
-                )
-
-        if action in {"DOUBLE_TEAM", "DENY"}:
-            if target.team == actor.team:
-                return (
-                    False,
-                    "BAD_TARGET",
-                    f"{action} requires an opponent target.",
-                )
-
-        if proposal.target == proposal.player_id:
+        if target_upper == proposal.player_id:
             return (
                 False,
                 "BAD_TARGET",
                 "A player cannot target themselves.",
             )
+
+        actor = state.players[proposal.player_id]
+        target = state.players[target_upper]
+
+        if kind == "teammate" and target.team != actor.team:
+            return (
+                False,
+                "BAD_TARGET",
+                f"{action} requires a teammate target.",
+            )
+
+        if kind == "opponent" and target.team == actor.team:
+            return (
+                False,
+                "BAD_TARGET",
+                f"{action} requires an opponent target.",
+            )
+
+        return True, None, ""
+
+    if kind == "zone":
+        if target_upper not in ZONES:
+            return (
+                False,
+                "BAD_TARGET",
+                f"Unknown court zone for {action}: {proposal.target}",
+            )
+        return True, None, ""
+
+    if kind == "direction":
+        if target_upper not in DRIVE_DIRECTIONS:
+            return (
+                False,
+                "BAD_TARGET",
+                f"Invalid direction for {action}: {proposal.target}",
+            )
+        return True, None, ""
 
     return True, None, ""
 
@@ -224,8 +345,14 @@ def remap_invalid_action(
     )
 
     if is_valid:
+        act_upper = proposal.action.upper()
+        kind, _ = TARGET_SPEC.get(act_upper, ("none", False))
+        raw_t = proposal.target.strip() if proposal.target else None
+        if raw_t and raw_t.upper() in ("NONE", "NULL"):
+            raw_t = None
+        norm_target = None if kind == "none" else (raw_t.upper() if raw_t else None)
         normalized = proposal.model_copy(
-            update={"action": proposal.action.upper()}
+            update={"action": act_upper, "target": norm_target}
         )
         return normalized, None
 

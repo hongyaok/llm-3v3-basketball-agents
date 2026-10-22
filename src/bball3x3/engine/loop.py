@@ -2,8 +2,7 @@
 
 This is a development harness, not the WS7 runner. It exercises the
 resolution order from the spec (ball handler -> screens -> off-ball ->
-contact -> rules -> fatigue -> invariants) so WS1 can close with
-``heuristic full games, SIR = 0`` before the asyncio runner exists.
+contact -> rules -> fatigue -> invariants) through :class:`EngineSession`.
 """
 
 from collections.abc import Callable, Mapping
@@ -55,19 +54,14 @@ def _clamp(pos: tuple[int, int], court: Court) -> tuple[int, int]:
     y = max(0, min(court.depth_cells - 1, pos[1]))
     return (x, y)
 
-
-def _step_toward(
-    pos: tuple[int, int], target: tuple[int, int], steps: int, court: Court
-) -> tuple[int, int]:
-    x, y = pos
-    for _ in range(steps):
-        if x != target[0]:
-            x += 1 if target[0] > x else -1
-        elif y != target[1]:
-            y += 1 if target[1] > y else -1
-        else:
-            break
-    return _clamp((x, y), court)
+__all__ = [
+    "EngineSession",
+    "play_heuristic_game",
+    "_clamp",
+    "_end_reason",
+    "_finished",
+    "_step_toward",
+]
 
 
 def _judge_referee_event(
@@ -222,36 +216,17 @@ def play_heuristic_game(
 
     state = start_state if start_state is not None else create_initial_state(config, rng)
     if on_event is not None:
-        on_event(
-            {
-                "type": "game_start",
-                "state": state,
-                "seed": seed,
-                "config": config,
-                "roster_path": roster_path,
-            }
-        )
+        on_event(session.start_payload())
+
     if agent_factory is None:
 
         def agent_factory(pid: str) -> HeuristicPlayer:
-            return HeuristicPlayer(pid, config)
+            return HeuristicPlayer(pid, session.config)
 
-    agents = {pid: agent_factory(pid) for pid in state.players}
-    invalid = 0
-    total_proposals = 0
-    violations: list[dict] = []
-    possessions = {state.offense: 1, other_team(state.offense): 0}
-    shots_1pt_att = shots_1pt_made = 0
-    shots_2pt_att = shots_2pt_made = 0
-    screen_advantage = False
-    after_drive = False
-    after_pass = False
-    ot_baseline: dict[str, int] | None = None
-    events = 0
+    agents = {pid: agent_factory(pid) for pid in session.state.players}
     history: list[GameState] = []
 
-    while events < max_events:
-        prev = state.model_copy(deep=True)
+    while session.events < max_events:
         if collect_history:
             history.append(prev)
         proposals: dict[str, ActionProposal] = {}
@@ -703,38 +678,6 @@ def play_heuristic_game(
             break
 
     if collect_history:
-        history.append(state.model_copy(deep=True))
+        history.append(session.state.model_copy(deep=True))
 
-    return {
-        "events": events,
-        "score": dict(state.score),
-        "phase": state.phase,
-        "violations": violations,
-        "sivr": len(violations) / max(events, 1),
-        "invalid_actions": invalid,
-        "total_proposals": total_proposals,
-        "iar": invalid / max(total_proposals, 1),
-        "possessions": dict(possessions),
-        "shots_1pt": {"att": shots_1pt_att, "made": shots_1pt_made},
-        "shots_2pt": {"att": shots_2pt_att, "made": shots_2pt_made},
-        "overtime_reached": ot_baseline is not None,
-        "history": history,
-        "final_state": state,
-    }
-
-
-def _end_reason(state, config: SimulationConfig) -> str:
-    """Classify a finished game for the terminal resolution record."""
-    if state.phase == "OT":
-        return "OT_WIN"
-    if max(state.score.values()) >= config.rules.win_score:
-        return "WIN_SCORE"
-    return "CLOCK_EXPIRED"
-
-
-def _finished(
-    state, config: SimulationConfig, ot_baseline: dict[str, int] | None
-) -> bool:
-    if state.phase == "OT" and ot_baseline is not None:
-        return is_overtime_over(state, config, ot_baseline)
-    return is_game_over(state, config)
+    return session.summary(history=history)

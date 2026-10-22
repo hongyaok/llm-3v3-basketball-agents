@@ -1,0 +1,20 @@
+[INSTRUCTION]
+1. Select ONE legal action from `[LEGAL ACTIONS]` above for your current role (`{{ role }}`). Ensure the `target` attribute is valid for that action (or `"None"` if no target is used).
+2. If you received a directive addressed to `to={{ player_id }}` in `[PREVIOUS CAPTAIN CALL]` or `[PREVIOUS TEAMMATE MESSAGES]` and it is legal in `[LEGAL ACTIONS]`, prioritize executing it unless an immediate open shot or clock emergency overrides it.
+{% if comms_enabled -%}
+3. You may optionally include `<MESSAGES>` with concise `<{{ player_id }}>...</{{ player_id }}>` messages or `[action to=... act=... target=...]` directives to teammates.
+{% else -%}
+3. Teammate messaging `<MESSAGES>` is disabled for your team; omit `<MESSAGES>`.
+{% endif -%}
+{% if is_captain and captain_enabled -%}
+4. As Captain, include `<CAPTAIN_CALL maintain="true|false">...</CAPTAIN_CALL>` when issuing or maintaining team tactics and directives.
+{% endif -%}
+{% if memory_write_enabled -%}
+5. Optionally include `<MEMORY_UPDATE opponent="..." category="..." tendency="..."/>` (categories: `defensive_tendency`, `offensive_tendency`, `playstyle`, `preferred_zone`, `weakness`, `general`) or `<CS_UPDATE side="offense|defense" opponent_strategy="..." counter_strategy="..."/>` when you observe a clear pattern.
+{% endif -%}
+{% if include_rationale -%}
+6. Include `<RATIONALE>` with a concise explanation (at most 25 words).
+{% else -%}
+6. Omit `<RATIONALE>`.
+{% endif -%}
+Reply now with ONLY the structured {{ output_format | upper }} output.

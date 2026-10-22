@@ -234,3 +234,65 @@ def test_referee_params_work_without_player_only_fields():
     body = server.body()
     assert body["temperature"] == 0.0
     assert body["max_tokens"] == 200
+
+
+def test_reasoning_and_finish_reason():
+    from bball3x3.llm import QuotaExceededError, RateLimiter
+
+    _ = (QuotaExceededError, RateLimiter)
+    cfg = LLMConfig()
+    cfg.players.reasoning = {"effort": "low"}
+    body_payload = ok_body(text="<RESPONSE/>")
+    body_payload["choices"][0]["finish_reason"] = "length"
+    server = FakeOpenRouter([body_payload])
+    resp = run(make_client(server, cfg).complete(MSGS, cfg.players))
+    assert server.body()["reasoning"] == {"effort": "low"}
+    assert resp.finish_reason == "length"
+
+
+def test_daily_quota_429_aborts_without_retrying():
+    from bball3x3.llm import QuotaExceededError
+
+    class QuotaServer(FakeOpenRouter):
+        async def handle(self, request):
+            self.requests.append(request)
+            return httpx2.Response(
+                429,
+                json={"error": {"message": "Rate limit exceeded: free-models-per-day."}},
+            )
+
+    cfg = LLMConfig()
+    cfg.players.max_retries = 3
+    server = QuotaServer()
+    with pytest.raises(QuotaExceededError, match="free-models-per-day"):
+        run(make_client(server, cfg).complete(MSGS, cfg.players))
+    assert len(server.requests) == 1
+
+
+def test_rpm_rate_limiter_paces_bursts():
+    from bball3x3.llm import RateLimiter
+
+    fake_now = 0.0
+    slept: list[float] = []
+
+    def clock() -> float:
+        return fake_now
+
+    async def sleep(dt: float) -> None:
+        nonlocal fake_now
+        slept.append(dt)
+        fake_now += dt
+
+    limiter = RateLimiter(3, window_s=60.0, clock=clock, sleep=sleep)
+    cfg = LLMConfig()
+    server = FakeOpenRouter()
+    client = make_client(server, cfg, rate_limiter=limiter)
+
+    async def five_calls():
+        for i in range(5):
+            await client.complete([{"role": "user", "content": f"req-{i}"}], cfg.players)
+
+    run(five_calls())
+    assert len(server.requests) == 5
+    # First 3 calls need no sleep; 4th waits 60s; 5th is at t=60s where 2nd/3rd also expired
+    assert slept == [pytest.approx(60.0)]

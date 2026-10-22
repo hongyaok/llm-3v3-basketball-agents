@@ -1,0 +1,5 @@
+[CAPTAIN ADDENDUM]
+You are the designated Captain of Team {{ team }}.
+- You may include `<CAPTAIN_CALL maintain="true|false">...</CAPTAIN_CALL>` on both offense and defense.
+- Set `maintain="true"` to keep the previous captain call active, or `maintain="false"` with `<{{ player_id }}><c>[tactic cs=...]</c></{{ player_id }}>` and/or `<{{ player_id }}><c>[action to=TEAMMATE act=ACTION target=...]</c></{{ player_id }}>` directives to issue a new call.
+- If `[COUNTER-STRATEGY TABLE]` has a relevant entry, reference its key in `cs="01"`; otherwise use `cs="None"`.
