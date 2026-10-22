@@ -106,6 +106,22 @@ The result includes source PDF pages. The retriever checks index integrity and
 uses the same embedding backend/model recorded in the manifest. This is a
 standalone retrieval API that the LLM referee also uses during games.
 
+Validate the saved index against independently labelled rule clauses in the
+existing 40 referee states:
+
+```bash
+uv run --extra rag python scripts/validate_referee_retrieval.py
+```
+
+`retrieval_gold.jsonl` labels 26 states for which a specific rule clause is
+relevant. The report gives retrieval hit@3 (a labelled state's top three
+results contain at least one gold clause), category-filter recall, call-type
+breakdown, and per-case misses. Its denominator is the 26 labelled states;
+the other 14 remain in the separate decision accuracy and false-call checks.
+The command uses the local index and model only; it makes no agent API calls.
+First use of the semantic model may download its weights. To evaluate another
+index or label set, pass `--index-dir`, `--cases`, or `--gold`.
+
 The asynchronous `LLMReferee` accepts an LLM backend implementing
 `complete(messages, params)` and a `RuleRetriever`. Its `judge_with_trace(state)`
 returns the effective decision, retrieved rule IDs, raw model reply, parse

@@ -1,5 +1,6 @@
 """Offline rulebook indexing stays deterministic and auditable."""
 
+import hashlib
 import json
 import sys
 from types import SimpleNamespace
@@ -89,6 +90,11 @@ def test_build_index_writes_aligned_artifacts_and_refuses_overwrite(tmp_path, mo
     assert manifest["embedding_backend"] == "hash"
     saved = [json.loads(line) for line in (output / "chunks.jsonl").read_text().splitlines()]
     assert [chunk["id"] for chunk in saved] == [chunk["id"] for chunk in chunks]
+    assert b"\r\n" not in (output / "chunks.jsonl").read_bytes()
+    assert b"\r\n" not in (output / "index_manifest.json").read_bytes()
+    assert hashlib.sha256((output / "chunks.jsonl").read_bytes()).hexdigest() == (
+        manifest["chunks_sha256"]
+    )
     matrix = np.load(output / "embeddings.npy", allow_pickle=False)
     assert matrix.shape == tuple(manifest["embedding_shape"])
     assert json.loads((output / "index_manifest.json").read_text()) == manifest

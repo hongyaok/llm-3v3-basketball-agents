@@ -215,7 +215,8 @@ def load_cases(path: str | Path = DEFAULT_CASES) -> list[dict[str, Any]]:
     return cases
 
 
-def _state_from_case(case: dict[str, Any]) -> RefereeState:
+def state_from_case(case: dict[str, Any]) -> RefereeState:
+    """Build the shared labelled referee state for decision and retrieval checks."""
     possession = case.get("possession", "A")
     handler = case.get("holder", f"{possession}1")
     contact_type = case.get("contact_type")
@@ -258,7 +259,7 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     by_contact: dict[str, dict[str, int]] = {}
     mismatches: list[dict[str, Any]] = []
     for case in cases:
-        got = referee.judge(_state_from_case(case))
+        got = referee.judge(state_from_case(case))
         expected = RefereeDecision.model_validate(case["expected"])
         matched = _matches(got, expected)
         correct += matched

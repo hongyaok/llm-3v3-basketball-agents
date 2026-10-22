@@ -13,7 +13,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from pypdf import PdfReader
+
+try:
+    from pypdf import PdfReader
+except ImportError:  # A saved index can be queried without the PDF parser.
+    PdfReader = None
 
 DEFAULT_RULEBOOK = Path("data/rules/fiba-3x3-basketball-rules-full-version.pdf")
 DEFAULT_INDEX_DIR = Path("data/rules")
@@ -90,6 +94,8 @@ def _join_lines(lines: list[str]) -> str:
 
 def extract_rule_chunks(pdf_path: str | Path) -> tuple[list[dict[str, Any]], int]:
     """Extract numbered clauses, retaining their article and source PDF pages."""
+    if PdfReader is None:
+        raise RuntimeError("Building the rule index requires pypdf")
     reader = PdfReader(str(pdf_path))
     chunks: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -229,7 +235,9 @@ def build_index(
                                              delete=False) as stream:
                 temporary.append(Path(stream.name))
         chunk_tmp, embedding_tmp, manifest_tmp = temporary
-        with chunk_tmp.open("w", encoding="utf-8") as stream:
+        # The manifest hashes raw bytes, so the index must have the same line
+        # endings on every OS (including Windows with core.autocrlf enabled).
+        with chunk_tmp.open("w", encoding="utf-8", newline="\n") as stream:
             for chunk in chunks:
                 stream.write(json.dumps(chunk, ensure_ascii=False, sort_keys=True) + "\n")
         with embedding_tmp.open("wb") as stream:
@@ -248,8 +256,8 @@ def build_index(
             "chunks_sha256": hashlib.sha256(chunk_tmp.read_bytes()).hexdigest(),
             "embeddings_sha256": hashlib.sha256(embedding_tmp.read_bytes()).hexdigest(),
         }
-        manifest_tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-                                encoding="utf-8")
+        with manifest_tmp.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         for temporary_path, name in zip(temporary, names, strict=True):
             temporary_path.chmod(0o644)
             os.replace(temporary_path, destination / name)
