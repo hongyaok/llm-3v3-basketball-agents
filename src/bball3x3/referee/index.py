@@ -61,16 +61,16 @@ def _category(article: int, clause: str) -> str | None:
             return "blocking_charging"
         if section == 7:
             return "screening"
-        if section in (11, 13, 14, 15):
+        if section == 11:
             return "illegal_use_of_hands"
-        if section in (5, 6):
+        if section == 5:
             return "loose_ball"
         return "personal_contact"
     if article == 34:
-        return "shooting_foul" if section == 2 else "personal_contact"
+        return "shooting_foul" if clause == "34.2.2" else "personal_contact"
     if article == 36:
         return "technical"
-    if article in (37, 38, 39):
+    if article == 37:
         return "unsportsmanlike"
     if article == 41:
         return "team_fouls"

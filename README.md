@@ -118,6 +118,14 @@ relevant. The report gives retrieval hit@3 (a labelled state's top three
 results contain at least one gold clause), category-filter recall, call-type
 breakdown, and per-case misses. Its denominator is the 26 labelled states;
 the other 14 remain in the separate decision accuracy and false-call checks.
+For the original MiniLM semantic index, the measured baseline is **14/26
+hit@3 (53.8%)**, with gold-rule category eligibility of **25/26 (96.2%)**.
+After the source-clause/category audit and focused category routing, the same
+unchanged labels measure **22/26 hit@3 (84.6%)** and **26/26 category eligibility**.
+The original 14/26 remains the baseline; see
+[`proposal/WS5_RETRIEVAL_AUDIT.md`](proposal/WS5_RETRIEVAL_AUDIT.md) for every
+baseline miss, mapping correction, and the four remaining misses. This is a
+retrieval measurement on synthetic states, not a live-game accuracy result.
 The command uses the local index and model only; it makes no agent API calls.
 First use of the semantic model may download its weights. To evaluate another
 index or label set, pass `--index-dir`, `--cases`, or `--gold`.

@@ -13,6 +13,27 @@ from bball3x3.cli import app
 from bball3x3.referee import index as rule_index
 
 
+@pytest.mark.parametrize(
+    ("article", "clause", "category"),
+    [
+        (33, "33.5", "loose_ball"),
+        (33, "33.6", "personal_contact"),
+        (33, "33.11", "illegal_use_of_hands"),
+        (33, "33.13", "personal_contact"),
+        (33, "33.14", "personal_contact"),
+        (33, "33.15", "personal_contact"),
+        (34, "34.2", "personal_contact"),
+        (34, "34.2.1", "personal_contact"),
+        (34, "34.2.2", "shooting_foul"),
+        (37, "37.1.1", "unsportsmanlike"),
+        (38, "38.1.1", None),
+        (39, "39.1", None),
+    ],
+)
+def test_article_category_mapping(article, clause, category):
+    assert rule_index._category(article, clause) == category
+
+
 def test_clause_extraction_keeps_ids_categories_and_page_ranges(monkeypatch):
     class Page:
         def __init__(self, text):

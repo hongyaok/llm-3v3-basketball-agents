@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from bball3x3.referee import RuleRetriever
+from bball3x3.referee.index import _category
 from bball3x3.referee.retrieval_validation import (
     DEFAULT_GOLD,
     evaluate_retrieval,
@@ -28,6 +29,11 @@ def test_checked_in_gold_matches_cases_and_saved_index():
     indexed_ids = {chunk["id"] for chunk in retriever.chunks}
     assert all(label.case_id in case_ids for label in labels)
     assert all(set(label.gold_rule_ids) <= indexed_ids for label in labels)
+    assert all(
+        chunk["category"] == _category(chunk["article"], chunk["clause"])
+        for chunk in retriever.chunks
+    )
+    assert {chunk["article"] for chunk in retriever.chunks}.isdisjoint({38, 39})
 
 
 class _FakeRetriever:
@@ -107,13 +113,13 @@ def test_cli_emits_machine_readable_report(monkeypatch, capsys):
     )
     assert DEFAULT_GOLD.is_file()
 
-    assert main() == 2  # the small fake index cannot contain every checked-in gold clause
+    assert main([]) == 2  # the small fake index cannot contain every checked-in gold clause
     assert "Gold rules absent from index" in capsys.readouterr().err
 
     cases = [case for case in load_cases() if case["id"] == "screen_a2_b2"]
     labels = [label for label in load_gold() if label.case_id == "screen_a2_b2"]
     monkeypatch.setattr("bball3x3.referee.retrieval_validation.load_cases", lambda _path: cases)
     monkeypatch.setattr("bball3x3.referee.retrieval_validation.load_gold", lambda _path: labels)
-    assert main() == 0
+    assert main([]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["hit_at_3"] == {"hits": 1, "total": 1, "rate": 1.0}

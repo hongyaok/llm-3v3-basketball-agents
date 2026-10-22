@@ -57,19 +57,23 @@ def _chunk(rule_id, category, text):
 @pytest.mark.parametrize(
     ("state", "expected"),
     [
-        (_state(contact_type="SCREEN_CONTACT"), ("screening", "personal_contact")),
-        (_state(contact_type="BODY_CONTACT_DRIVE"),
-         ("blocking_charging", "personal_contact")),
-        (_state(contact_type="REACH"), ("illegal_use_of_hands", "personal_contact")),
-        (_state(contact_type="LOOSE_BALL"), ("loose_ball", "personal_contact")),
+        (_state(contact_type="SCREEN_CONTACT"), ("screening",)),
+        (_state(contact_type="BODY_CONTACT_DRIVE"), ("blocking_charging",)),
+        (_state(contact_type="REACH"), ("illegal_use_of_hands",)),
+        (_state(contact_type="LOOSE_BALL"), ("loose_ball",)),
         (_state(ball_status="IN_SHOT"), ("goaltending_interference", "shooting_foul")),
-        (_state(event={"event_type": "REBOUND"}), ("loose_ball", "personal_contact")),
+        (_state(event={"event_type": "REBOUND"}), ("loose_ball",)),
+        (_state(event={"event_type": "SCREEN"}), ("screening",)),
+        (_state(event={"event_type": "SHOOT"}, contact_type="BODY_CONTACT_DRIVE"),
+         ("shooting_foul",)),
+        (_state(event={"offensive_contact": True}, contact_type="BODY_CONTACT_DRIVE"),
+         ("blocking_charging",)),
         (_state(event={"event_type": "HOLD"}), ("stalling",)),
-        (_state(event={"technical_conduct": True}), ("technical", "free_throws")),
+        (_state(event={"technical_conduct": True}), ("technical",)),
         (_state(event={"judgement_violation": "GOALTENDING"}),
          ("goaltending_interference",)),
         (_state(contact_type="REACH", team_fouls={"A": 6, "B": 0}),
-         ("illegal_use_of_hands", "personal_contact", "team_fouls", "free_throws")),
+         ("illegal_use_of_hands", "team_fouls", "free_throws")),
     ],
 )
 def test_categories_for_state(state, expected):
@@ -100,12 +104,12 @@ def test_retrieval_filters_then_ranks_with_stable_ties(tmp_path, monkeypatch):
     result = retriever.retrieve(state)
 
     assert result.query == referee_query_text(state)
-    assert result.categories == ("screening", "personal_contact")
-    assert result.chunk_ids == ["R33.7", "R33.8", "R33.2"]
+    assert result.categories == ("screening",)
+    assert result.chunk_ids == ["R33.7", "R33.8"]
     assert result.rules[0].page_start == 10
     assert result.rules[0].page_end == 11
     assert result.rules[0].text == "screen A"
-    assert [rule.score for rule in result.rules] == pytest.approx([1, 1, 0.6])
+    assert [rule.score for rule in result.rules] == pytest.approx([1, 1])
     assert retriever.retrieve(state, top_k=1).chunk_ids == ["R33.7"]
     with pytest.raises(ValueError, match="positive integer"):
         retriever.retrieve(state, top_k=0)

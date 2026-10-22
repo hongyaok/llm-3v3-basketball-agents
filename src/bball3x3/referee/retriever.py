@@ -17,7 +17,7 @@ from .index import CATEGORIES, DEFAULT_INDEX_DIR, hash_embeddings
 
 
 def categories_for_state(state: RefereeState) -> tuple[str, ...]:
-    """Route event, contact and ball evidence to relevant rule categories."""
+    """Route to the most specific supported rule issue before cosine ranking."""
     event = state.current_event
     event_type = event.get("event_type")
     event_type = event_type.upper() if isinstance(event_type, str) else ""
@@ -27,49 +27,48 @@ def categories_for_state(state: RefereeState) -> tuple[str, ...]:
         or event_type in {"SHOOT", "SHOT"}
         or state.ball.status == "IN_SHOT"
     )
-    selected: list[str] = []
-
-    def add(*names: str) -> None:
-        for name in names:
-            if name not in selected:
-                selected.append(name)
-
     violation = event.get("judgement_violation")
-    if violation == "GOALTENDING" or violation == "BASKET_INTERFERENCE" or event_type in {
-        "GOALTENDING", "BASKET_INTERFERENCE",
-    }:
-        add("goaltending_interference")
+    if (
+        isinstance(violation, str)
+        and violation in {"GOALTENDING", "BASKET_INTERFERENCE"}
+    ) or event_type in {"GOALTENDING", "BASKET_INTERFERENCE"}:
+        return ("goaltending_interference",)
     if violation == "STALLING" or event_type == "STALLING":
-        add("stalling")
+        return ("stalling",)
+    if event.get("technical_conduct") is True or event_type == "TECHNICAL":
+        return ("technical",)
+    if event.get("unsportsmanlike_contact") is True:
+        return ("unsportsmanlike",)
 
+    primary: str | None = None
     if contact.contact_detected:
         contact_categories = {
-            "BODY_CONTACT_DRIVE": ("blocking_charging", "personal_contact"),
-            "REACH": ("illegal_use_of_hands", "personal_contact"),
-            "SCREEN_CONTACT": ("screening", "personal_contact"),
-            "LOOSE_BALL": ("loose_ball", "personal_contact"),
+            "BODY_CONTACT_DRIVE": "blocking_charging",
+            "REACH": "illegal_use_of_hands",
+            "SCREEN_CONTACT": "screening",
+            "LOOSE_BALL": "loose_ball",
         }
-        add(*contact_categories.get(contact.contact_type, ("personal_contact",)))
-    elif state.ball.status == "IN_SHOT" or event_type in {"SHOOT", "SHOT"}:
-        add("goaltending_interference")
-    elif event_type == "REBOUND" or state.ball.status == "LOOSE":
-        add("loose_ball", "personal_contact")
+        primary = contact_categories.get(contact.contact_type, "personal_contact")
 
-    if shooting:
-        add("shooting_foul")
-    if event.get("unsportsmanlike_contact") is True:
-        add("unsportsmanlike", "free_throws")
-    if event.get("technical_conduct") is True or event_type == "TECHNICAL":
-        add("technical", "free_throws")
+    if event.get("offensive_contact") is True and primary == "blocking_charging":
+        return (primary,)
+    if shooting and contact.contact_detected:
+        return ("shooting_foul",)
+    if primary is not None:
+        if any(fouls >= 6 for fouls in state.team_fouls.values()):
+            return (primary, "team_fouls", "free_throws")
+        return (primary,)
+    if event_type == "SCREEN":
+        return ("screening",)
+    if event_type == "REBOUND" or state.ball.status == "LOOSE":
+        return ("loose_ball",)
     if event_type in {"FREE_THROW", "FT"}:
-        add("free_throws")
-    if event_type == "TEAM_FOUL" or (
-        contact.contact_detected and any(fouls >= 6 for fouls in state.team_fouls.values())
-    ):
-        add("team_fouls", "free_throws")
-    if not selected:
-        add("stalling")
-    return tuple(selected)
+        return ("free_throws",)
+    if event_type == "TEAM_FOUL":
+        return ("team_fouls", "free_throws")
+    if shooting:
+        return ("goaltending_interference", "shooting_foul")
+    return ("stalling",)
 
 
 @dataclass(frozen=True, slots=True)
