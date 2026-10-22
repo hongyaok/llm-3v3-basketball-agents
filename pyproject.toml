@@ -27,6 +27,9 @@ dependencies = [
 bball = "bball3x3.cli:app"
 
 [project.optional-dependencies]
+embeddings = [
+    "sentence-transformers>=3.0",
+]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.3.0",

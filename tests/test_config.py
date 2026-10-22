@@ -10,7 +10,7 @@ from bball3x3.config import (
 
 def test_load_llm_config():
     cfg = load_llm_config("configs/llm.yaml")
-    assert cfg.players.model == "google/gemma-4-31b-it:free"
+    assert cfg.players.model == "minimax/minimax-m3.1-flash:free"
     assert cfg.players.max_tokens == 1000
     assert cfg.players.reasoning == {"effort": "low"}
     assert cfg.referee.backend == "rule_based"

@@ -37,6 +37,7 @@ from bball3x3.engine.session import EngineSession
 from bball3x3.llm.base import LLMBackend, LLMResponse
 from bball3x3.logging.event_log import EventLogger
 from bball3x3.memory.personal import PersonalMemory
+from bball3x3.memory.similarity import Embedder
 from bball3x3.schemas.actions import ActionProposal
 from bball3x3.schemas.agent import AgentOutput, CoordinationConfig
 from bball3x3.schemas.log import (
@@ -68,11 +69,13 @@ def _config_hash(
     sim_cfg: SimulationConfig,
     llm_cfg: LLMConfig,
     coordination: dict[str, CoordinationConfig],
+    memory_settings: dict[str, Any],
 ) -> str:
     snapshot = {
         "simulation": sim_cfg.model_dump(mode="python"),
         "llm_players": llm_cfg.players.model_dump(mode="python"),
         "coordination": {k: v.model_dump(mode="python") for k, v in coordination.items()},
+        "memory_settings": memory_settings,
     }
     canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -176,6 +179,8 @@ async def run_llm_game(
     coordination: dict[str, CoordinationConfig] | None = None,
     team_conditions: dict[str, str] | None = None,
     coordination_view: CoordinationView | None = None,
+    embedder: Embedder | None = None,
+    similarity_threshold: float = 0.80,
     max_events: int = 2000,
     checkpoint_path: str | Path | None = None,
     resume: bool = False,
@@ -198,12 +203,39 @@ async def run_llm_game(
     }
     cond_labels = team_conditions or {"A": "A_full", "B": "A_full"}
 
+    if embedder is None:
+        memory_settings = {
+            "backend": "exact",
+            "model": None,
+            "similarity_threshold": None,
+        }
+    else:
+        memory_settings = {
+            "backend": "embedding",
+            "model": getattr(
+                embedder,
+                "model_name",
+                getattr(embedder, "__qualname__", type(embedder).__qualname__),
+            ),
+            "similarity_threshold": similarity_threshold,
+        }
+
+    config_identity = _config_hash(
+        sim_cfg, llm_cfg, coord_flags, memory_settings
+    )
     game_id = game_id or f"llm_game_{seed}"
     replicate_id = replicate_id or f"seed_{seed}"
 
     saved_event_decisions: list[dict[str, dict[str, Any]]] = []
     if resume and ckpt_path.exists():
         ckpt_payload = json.loads(ckpt_path.read_text(encoding="utf-8"))
+        if ckpt_payload.get("config_hash") != config_identity:
+            raise ValueError(
+                "Checkpoint configuration differs from this run, "
+                "or the checkpoint predates config identity validation"
+            )
+        if ckpt_payload.get("seed") != seed:
+            raise ValueError("Checkpoint seed differs from this run")
         saved_event_decisions = list(ckpt_payload.get("events", []))
         if log_path.exists():
             log_path.unlink()
@@ -221,7 +253,16 @@ async def run_llm_game(
     coord_view = (
         coordination_view
         if coordination_view is not None
-        else SimpleCoordinationView(initial_memory=init_mem_entries)
+        else SimpleCoordinationView(
+            initial_memory=init_mem_entries,
+            captains={
+                team: f"{team}{roster_cfg.captain[1:]}"
+                for team in ("A", "B")
+            },
+            active_players=set(session.state.players),
+            embedder=embedder,
+            similarity_threshold=similarity_threshold,
+        )
     )
     personal_memories = {pid: PersonalMemory(pid) for pid in session.state.players}
     prompt_builder = PromptBuilder(roster=roster_cfg, court_config=sim_cfg.court)
@@ -282,11 +323,12 @@ async def run_llm_game(
             "players": {pid: p.team for pid, p in session.state.players.items()},
             "captain": roster_cfg.captain,
         },
-        config_hash=_config_hash(sim_cfg, llm_cfg, coord_flags),
+        config_hash=config_identity,
         config_snapshot={
             "simulation": sim_cfg.model_dump(mode="python"),
             "llm_players": llm_cfg.players.model_dump(mode="python"),
             "coordination": {k: v.model_dump(mode="python") for k, v in coord_flags.items()},
+            "memory_settings": memory_settings,
         },
         prompt_hashes=prompt_hashes,
         model_slug=llm_cfg.players.model,
@@ -316,8 +358,12 @@ async def run_llm_game(
         ckpt_path.parent.mkdir(parents=True, exist_ok=True)
         ckpt_path.write_text(
             json.dumps(
-                {"game_id": game_id, "seed": seed, "events": saved_event_decisions},
-                ensure_ascii=False,
+            {
+                "game_id": game_id,
+                "seed": seed,
+                "config_hash": config_identity,
+                "events": saved_event_decisions,
+            }
             ),
             encoding="utf-8",
         )
@@ -516,22 +562,27 @@ async def run_llm_game(
                             team=mw["team"],
                             player=mw["player"],
                             proposal=mw["proposal"],
-                            accepted=True,
+                            accepted=mw["accepted"],
                             merged_into=mw["merged_into"],
                             new_id=mw["new_id"],
                             confidence_after=mw["confidence_after"],
                         )
                     )
+
+                    if not mw["accepted"]:
+                        continue
+
+                    entry = mw["entry"]
                     logger.write(
                         MemoryWriteRecord(
                             event_idx=e,
                             team=mw["team"],
-                            memory_id=mw["memory_id"],
-                            opponent=mw["proposal"].opponent,
-                            category=mw["proposal"].category,
-                            tendency=mw["proposal"].tendency,
+                            memory_id=entry.id,
+                            opponent=entry.opponent,
+                            category=entry.category,
+                            tendency=entry.tendency,
                             visible_at=mw["visible_at"],
-                            evicted_ids=[],
+                            evicted_ids=mw["evicted_ids"],
                         )
                     )
                 for cw in cs_writes:
@@ -541,19 +592,24 @@ async def run_llm_game(
                             team=cw["team"],
                             player=cw["player"],
                             proposal=cw["proposal"],
-                            accepted=True,
+                            accepted=cw["accepted"],
                             key=cw["key"],
                             merged=cw["merged"],
                         )
                     )
+
+                    if not cw["accepted"]:
+                        continue
+
+                    entry = cw["entry"]
                     logger.write(
                         CSWriteRecord(
                             event_idx=e,
                             team=cw["team"],
-                            key=cw["key"],
-                            side=cw["proposal"].side,
-                            opponent_strategy=cw["proposal"].opponent_strategy,
-                            counter_strategy=cw["proposal"].counter_strategy,
+                            key=entry.key,
+                            side=entry.side,
+                            opponent_strategy=entry.opponent_strategy,
+                            counter_strategy=entry.counter_strategy,
                             merged=cw["merged"],
                             visible_at=cw["visible_at"],
                         )

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Protocol
 
 from bball3x3.config import InitialMemoryConfig
+from bball3x3.coordination.captain import CaptainStore
+from bball3x3.coordination.channels import CommsChannel
+from bball3x3.memory.counter_strategy import CounterStrategyStore
+from bball3x3.memory.shared import SharedMemoryStore
+from bball3x3.memory.similarity import Embedder
 from bball3x3.schemas.agent import AgentOutput, CoordinationConfig
 from bball3x3.schemas.memory import CSEntry, MemoryEntry
 from bball3x3.schemas.messages import CaptainCall, Message
@@ -116,41 +120,77 @@ class SimpleCoordinationView:
     def __init__(
         self,
         initial_memory: dict[str, list[MemoryEntry]] | None = None,
+        *,
+        captains: dict[str, str] | None = None,
+        active_players: set[str] | None = None,
+        embedder: Embedder | None = None,
+        similarity_threshold: float = 0.80,
     ) -> None:
-        self._messages_by_event: dict[tuple[str, int], list[Message]] = defaultdict(list)
-        self._current_call: dict[str, CaptainCall | None] = {"A": None, "B": None}
-        self._call_updated_at: dict[str, int] = {"A": 0, "B": 0}
-        self._memory: dict[str, list[MemoryEntry]] = {
-            "A": list((initial_memory or {}).get("A", [])),
-            "B": list((initial_memory or {}).get("B", [])),
+        self._captain_ids = (
+            dict(captains) if captains is not None
+            else {"A": "A1", "B": "B1"}
+        )
+        self._channels = {
+            team: CommsChannel(team) for team in ("A", "B")
         }
-        self._cs: dict[str, list[CSEntry]] = {"A": [], "B": []}
+        self._captain_stores = {
+            team: CaptainStore() for team in ("A", "B")
+        }
+        players = (
+            set(active_players)
+            if active_players is not None
+            else {"A1", "A2", "A3", "B1", "B2", "B3"}
+        )
+        self._memory_stores = {
+            team: SharedMemoryStore(
+                opponents={
+                    pid for pid in players if pid[:1] != team
+                },
+                initial_entries=(initial_memory or {}).get(team, []),
+                embedder=embedder,
+                similarity_threshold=similarity_threshold,
+            )
+            for team in ("A", "B")
+        }
+        self._memory_history: dict[
+            str, list[tuple[int, list[MemoryEntry]]]
+        ] = {
+            team: [(0, self._memory_stores[team].entries())]
+            for team in ("A", "B")
+        }
+        self._cs_stores = {
+            team: CounterStrategyStore(
+                embedder=embedder,
+                similarity_threshold=similarity_threshold,
+            )
+            for team in ("A", "B")
+        }
+        self._cs_history: dict[
+            str, list[tuple[int, list[CSEntry]]]
+        ] = {
+            team: [(0, [])]
+            for team in ("A", "B")
+        }
 
     def captain_call(self, team: str, event_idx: int) -> CaptainCall | None:
-        if self._call_updated_at.get(team, 0) < event_idx:
-            return self._current_call.get(team)
-        return None
+        return self._captain_stores[team].current(event_idx)
 
     def inbox(self, team: str, pid: str, event_idx: int) -> list[Message]:
-        # Deliver messages emitted at event_idx - 1 to teammates on the same team
-        emitted = self._messages_by_event.get((team, event_idx - 1), [])
-        return [
-            m for m in emitted if m.sender[:1] == team and m.sender != pid
-        ]
+        if pid[:1] != team:
+            return []
+        return self._channels[team].deliver(event_idx, pid)
 
     def shared_memory(self, team: str, event_idx: int) -> list[MemoryEntry]:
-        return [
-            entry
-            for entry in self._memory.get(team, [])
-            if entry.decision_event < event_idx
-        ]
+        for written_at, entries in reversed(self._memory_history[team]):
+            if written_at < event_idx:
+                return [entry.model_copy(deep=True) for entry in entries]
+        return []
 
     def cs_table(self, team: str, event_idx: int) -> list[CSEntry]:
-        return [
-            entry
-            for entry in self._cs.get(team, [])
-            if entry.decision_event < event_idx
-        ]
+        for written_at, entries in reversed(self._cs_history[team]):
+            if written_at < event_idx:
+                return [entry.model_copy(deep=True) for entry in entries]
+        return []
 
     def record_event(
         self,
@@ -168,132 +208,148 @@ class SimpleCoordinationView:
         for pid, output in sorted(kept_outputs.items()):
             team = pid[:1]
             flags = coordination.get(team, CoordinationConfig())
+            # Validate references against the table visible at decision time.
+            visible_cs_keys = {
+                entry.key for entry in self.cs_table(team, event_idx)
+            }
+            tactic_messages = []
 
-            # Store ordinary messages (already filtered by apply_flags)
-            for msg in output.messages:
-                if msg.sender[:1] == team:
-                    self._messages_by_event[(team, event_idx)].append(msg)
+            if flags.comms:
+                tactic_messages.extend(
+                    message
+                    for message in output.messages
+                    if message.sender == pid and message.kind == "tactic"
+                )
 
-            # Handle captain call
-            if output.captain_call is not None and flags.captain:
-                call = output.captain_call
-                if call.maintain and self._current_call.get(team) is not None:
-                    prev_call = self._current_call[team]
-                    assert prev_call is not None
-                    self._current_call[team] = prev_call.model_copy(update={"maintain": True})
-                elif call.tactic is not None or call.directives:
-                    self._current_call[team] = call
-                    self._call_updated_at[team] = event_idx
-                # Also deliver captain directives via inbox so Team B sees them in teammate messages
-                for d_msg in call.directives:
-                    if d_msg.sender[:1] == team:
-                        self._messages_by_event[(team, event_idx)].append(
-                            d_msg.model_copy(update={"is_captain_channel": True})
+            if (
+                flags.captain
+                and pid == self._captain_ids[team]
+                and output.captain_call is not None
+                and not output.captain_call.maintain
+            ):
+                tactic = output.captain_call.tactic
+                if (
+                    tactic is not None
+                    and tactic.sender == pid
+                    and tactic.kind == "tactic"
+                ):
+                    tactic_messages.append(tactic)
+
+            for message in tactic_messages:
+                if message.cs in visible_cs_keys:
+                    self._cs_stores[team].reference(message.cs)
+            # Accept ordinary messages only from their actual author.
+            if flags.comms:
+                ordinary_messages = [
+                    message.model_copy(
+                        deep=True,
+                        update={"is_captain_channel": False},
+                    )
+                    for message in output.messages
+                    if message.sender == pid
+                ]
+                self._channels[team].post(event_idx, ordinary_messages)
+
+            # Only the configured captain may submit captain calls.
+            if (
+                flags.captain
+                and pid == self._captain_ids[team]
+                and output.captain_call is not None
+            ):
+                call = output.captain_call.model_copy(deep=True)
+
+                if call.tactic is not None and call.tactic.sender != pid:
+                    call.tactic = None
+
+                call.directives = [
+                    message
+                    for message in call.directives
+                    if message.sender == pid
+                ]
+
+                self._captain_stores[team].post(event_idx, call)
+
+                # Captain directives still reach teammates with comms off.
+                if not call.maintain:
+                    captain_messages = [
+                        message.model_copy(
+                            deep=True,
+                            update={"is_captain_channel": True},
                         )
-
-            # Handle memory writes (simple append/dedup for WS3 until WS4 lands)
+                        for message in call.directives
+                    ]
+                    self._channels[team].post(event_idx, captain_messages)
             if output.memory_update is not None and flags.memory_write:
-                mu = output.memory_update
-                existing = next(
-                    (
-                        e
-                        for e in self._memory[team]
-                        if e.opponent == mu.opponent
-                        and e.category == mu.category
-                        and e.tendency.lower() == mu.tendency.lower()
-                    ),
-                    None,
-                )
-                if existing is not None:
-                    existing.confidence += 1
-                    existing.decision_event = event_idx
-                    memory_writes.append(
-                        {
-                            "team": team,
-                            "player": pid,
-                            "proposal": mu,
-                            "accepted": True,
-                            "merged_into": existing.id,
-                            "new_id": None,
-                            "memory_id": existing.id,
-                            "confidence_after": existing.confidence,
-                            "visible_at": event_idx + 1,
-                        }
-                    )
-                else:
-                    new_id = f"M{len(self._memory[team]) + 1:02d}"
-                    entry = MemoryEntry(
-                        id=new_id,
-                        opponent=mu.opponent,
-                        category=mu.category,  # type: ignore[arg-type]
-                        tendency=mu.tendency,
-                        confidence=1,
-                        observed_by=pid,
-                        decision_event=event_idx,
-                    )
-                    self._memory[team].append(entry)
-                    memory_writes.append(
-                        {
-                            "team": team,
-                            "player": pid,
-                            "proposal": mu,
-                            "accepted": True,
-                            "merged_into": None,
-                            "new_id": new_id,
-                            "memory_id": new_id,
-                            "confidence_after": 1,
-                            "visible_at": event_idx + 1,
-                        }
-                    )
+                proposal = output.memory_update
+                result = {
+                    "team": team,
+                    "player": pid,
+                    "proposal": proposal,
+                    "accepted": False,
+                    "merged_into": None,
+                    "new_id": None,
+                    "confidence_after": None,
+                }
 
-            # Handle CS writes
-            if output.cs_update is not None and flags.memory_write:
-                cu = output.cs_update
-                existing_cs = next(
-                    (
-                        c
-                        for c in self._cs[team]
-                        if c.side == cu.side
-                        and c.opponent_strategy.lower() == cu.opponent_strategy.lower()
-                    ),
-                    None,
-                )
-                if existing_cs is not None:
-                    existing_cs.counter_strategy = cu.counter_strategy
-                    existing_cs.decision_event = event_idx
-                    cs_writes.append(
-                        {
-                            "team": team,
-                            "player": pid,
-                            "proposal": cu,
-                            "accepted": True,
-                            "key": existing_cs.key,
-                            "merged": True,
-                            "visible_at": event_idx + 1,
-                        }
+                try:
+                    entry, merged, evicted_ids = (
+                        self._memory_stores[team].write(
+                            proposal,
+                            player_id=pid,
+                            event_idx=event_idx,
+                        )
                     )
+                except ValueError:
+                    # Invalid proposals and capacity rejections are logged.
+                    memory_writes.append(result)
                 else:
-                    new_key = f"{len(self._cs[team]) + 1:02d}"
-                    cs_entry = CSEntry(
-                        key=new_key,
-                        side=cu.side,
-                        opponent_strategy=cu.opponent_strategy,
-                        counter_strategy=cu.counter_strategy,
-                        created_by=pid,
-                        decision_event=event_idx,
-                        times_referenced=0,
+                    result.update({
+                        "accepted": True,
+                        "merged_into": entry.id if merged else None,
+                        "new_id": None if merged else entry.id,
+                        "memory_id": entry.id,
+                        "confidence_after": entry.confidence,
+                        "visible_at": event_idx + 1,
+                        "evicted_ids": evicted_ids,
+                        "entry": entry,
+                    })
+                    memory_writes.append(result)
+                # Validate and store counter-strategy proposals.
+            if output.cs_update is not None and flags.memory_write:
+                proposal = output.cs_update
+                result = {
+                    "team": team,
+                    "player": pid,
+                    "proposal": proposal,
+                    "accepted": False,
+                    "key": None,
+                    "merged": False,
+                }
+
+                try:
+                    entry, merged = self._cs_stores[team].write(
+                        proposal,
+                        player_id=pid,
+                        event_idx=event_idx,
                     )
-                    self._cs[team].append(cs_entry)
-                    cs_writes.append(
-                        {
-                            "team": team,
-                            "player": pid,
-                            "proposal": cu,
-                            "accepted": True,
-                            "key": new_key,
-                            "merged": False,
-                            "visible_at": event_idx + 1,
-                        }
-                    )
+                except ValueError:
+                    cs_writes.append(result)
+                else:
+                    result.update({
+                        "accepted": True,
+                        "key": entry.key,
+                        "merged": merged,
+                        "visible_at": event_idx + 1,
+                        "entry": entry,
+                    })
+                    cs_writes.append(result)
+        # Snapshot after all players' submissions have been processed.
+        for team in ("A", "B"):
+            self._memory_history[team].append(
+                (event_idx, self._memory_stores[team].entries())
+            )
+            self._cs_history[team].append(
+                (event_idx, self._cs_stores[team].entries())
+            )
 
         return memory_writes, cs_writes
