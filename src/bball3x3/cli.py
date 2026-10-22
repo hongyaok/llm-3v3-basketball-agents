@@ -50,6 +50,9 @@ def export_experiment(
         tables = build_experiment_tables(games, include_incomplete=include_incomplete,
                                          window=window)
         write_experiment_tables(tables, output_dir)
+    except FileExistsError as exc:
+        typer.echo(f"Error: File exists: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     except (OSError, ValueError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc

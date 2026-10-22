@@ -26,6 +26,7 @@ class LLMPlayersConfig(BaseModel):
     timeout_s: float = 45.0
     max_retries: int = 3
     repair_attempts: int = 1
+    reasoning: dict[str, Any] | None = None
 
 class LLMRefereeConfig(BaseModel):
     enabled: bool = False
@@ -42,6 +43,7 @@ class LLMEmbeddingsConfig(BaseModel):
 
 class LLMRuntimeConfig(BaseModel):
     max_concurrent_requests: int = 12
+    max_requests_per_minute: int | None = None
     cache: dict[str, Any] = Field(default_factory=dict)
     budget: dict[str, float] = Field(default_factory=dict)
 

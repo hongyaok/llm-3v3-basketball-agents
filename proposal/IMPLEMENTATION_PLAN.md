@@ -26,6 +26,7 @@ Source: [proposal/DSA4213 Group Project Proposal.pdf](proposal/DSA4213%20Group%2
 | 6 | Mirror control (A vs A) | **Skipped for now.** It can be added later as a config-only change. |
 | 7 | Players | **You choose them** and fill them into a YAML template (`configs/teams/roster.yaml`). |
 | 8 | Shot model | `P(make) = σ(β0 + β1·shooting + β2·shotquality − β3·contest − β4·fatigue)` (Section 6, WS1). |
+| 9 | Placeholder policies (WS3 scaffolding) | `FakeLLM` policies (`LegalXMLPolicy`, `FaultInjectingPolicy`), heuristic/random players, and fixed harness outputs are **validation scaffolding only**. They **must be replaced with real OpenRouter-backed policies after WS5 (referee + RAG) and WS7 (experiment harness) are implemented, before the final WS7 experiment runs**. Numbers produced with fakes or heuristics are plumbing checks, never M2/M5 results. |
 
 ---
 
@@ -686,7 +687,9 @@ Disabled sections are shown as `none` rather than removed, which reduces confoun
 
 **Prompt harness.** About 20 fixed scenarios, reporting the parse success rate, IAR, directive usage and memory-ref usage for each prompt version. The template hash is logged in every decision.
 
-**Done when:** LLM-vs-LLM games run end to end, with a parse failure rate < 2% and IAR < 5% (targets confirmed in the pilot). If the chosen model can't reach these with XML, set `output_format: json`.
+**Deferred replacement (see §0 Decision 9).** `llm/fake_policies.py` (`LegalXMLPolicy`, `FaultInjectingPolicy`), `agents/heuristic_player.py`, `agents/random_player.py`, and fixed outputs in `scripts/prompt_harness.py` / `scripts/llm_smoke.py` are validation scaffolding only. They stay until WS5 and WS7 land because CI, the byte-identical heuristic regression, the 1,000-game fuzz (SIR = 0), and harness determinism depend on them. They must be replaced with real OpenRouter-backed policies after WS5 (referee + RAG) and WS7 (experiment harness) are implemented, before the final WS7 experiment runs. Figures produced with fakes or heuristics are plumbing checks, never M2/M5 results.
+
+**Done when:** LLM-vs-LLM games run end to end, with a parse failure rate < 2% and IAR < 5% (targets confirmed in the pilot). If the chosen model can't reach these with XML, set `output_format: json`. M2 counts only on a real-model game (see placeholder register, §0 Decision 9).
 
 ---
 

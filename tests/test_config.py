@@ -10,9 +10,12 @@ from bball3x3.config import (
 
 def test_load_llm_config():
     cfg = load_llm_config("configs/llm.yaml")
-    assert cfg.players.model == "openai/gpt-oss-120b"
+    assert cfg.players.model == "minimax/minimax-m3.1-flash:free"
+    assert cfg.players.max_tokens == 1000
+    assert cfg.players.reasoning == {"effort": "low"}
     assert cfg.referee.backend == "rule_based"
     assert cfg.runtime.max_concurrent_requests == 12
+    assert cfg.runtime.max_requests_per_minute == 18
 
 def test_load_simulation_config():
     cfg = load_simulation_config("configs/simulation.yaml")

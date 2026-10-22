@@ -347,3 +347,45 @@ def test_memory_growth_needs_committed_write_for_accepted_proposal():
     ))
     metrics = compute_game_metrics(records)
     assert metrics.memory_growth["A"].status == "insufficient_evidence"
+
+@pytest.mark.parametrize(
+    "player,event_idx,refs,expected",
+    [
+        ("A1", 1, ["UNKNOWN"], 0),
+        ("A1", 2, ["M1"], 0),       # Not visible until event 3.
+        ("A1", 3, ["M1"], 1),       # Now visible.
+        ("A1", 3, ["M0"], 1),       # Still visible before eviction.
+        ("A1", 4, ["M0"], 0),       # Evicted from event 4.
+        ("B1", 3, ["M1"], 0),       # Belongs to the other team.
+        ("A1", 3, ["UNKNOWN", "M1"], 1),
+    ],
+)
+def test_memory_reference_validity_at_decision_time(
+    player, event_idx, refs, expected
+):
+    records = _records()
+
+    # Clear existing references so only this case contributes to MAUR.
+    for record in records:
+        if isinstance(record, DecisionRecord):
+            record.memory_ref = []
+            record.parsed_output.memory_ref = []
+
+    decision = next(
+        record
+        for record in records
+        if isinstance(record, DecisionRecord)
+        and record.player == player
+        and record.event_idx == event_idx
+    )
+    decision.memory_ref = refs
+    decision.parsed_output.memory_ref = refs
+
+    metrics = compute_game_metrics(records)
+    team = player[0]
+
+    assert metrics.maur[team].numerator == expected
+    assert metrics.maur[team].denominator == 12
+
+    # Invalid references stay in the log for inspection.
+    assert decision.memory_ref == refs

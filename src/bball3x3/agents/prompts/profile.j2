@@ -1,0 +1,11 @@
+[PLAYER PROFILE]
+Player ID: {{ player_id }} ({{ profile_name }})
+Team: {{ team }}{% if is_captain and captain_enabled %} (Team Captain){% endif %}
+Abilities (1-10):
+- Shooting: {{ abilities.shooting }}/10
+- Passing: {{ abilities.passing }}/10
+- Defense: {{ abilities.defense }}/10
+- Stamina: {{ abilities.stamina }}/10
+- Ball Handling: {{ abilities.ball_handling }}/10
+- Rebounding: {{ abilities.rebounding }}/10
+Playstyle: {{ playstyle }}

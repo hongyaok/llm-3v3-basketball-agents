@@ -223,3 +223,6 @@ runs/
 # Third-party reference clone (dev-only, see adopt_basketworld.md)
 third_party/
 
+# Local WS4 smoke-run artifacts
+outputs/ws4-smoke/
+outputs/ws4-check/
