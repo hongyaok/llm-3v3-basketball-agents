@@ -190,7 +190,8 @@ finishing under trailing defense stays open (see item 3 below).
 
 1. Full `bball run-game` CLI and asyncio game runner (WS7) reusing
    `loop.py` order with logging, referee calls and LLM agents.
-2. Rule-based referee running every state (WS5-A) wired into the loop.
+2. Rule-based referee running every state (WS5-A); logged games can also use
+   the WS5-B LLM referee via a persistent per-game async adapter.
 3. Resolver calibration follow-up: the readout (FG1 0.316, FG2 0.472 on
    scarce attempts, PPP ~0.18-0.19 vs ~0.9 target) points at in-arc
    finishing under trailing defense and deep-shot scarcity; tune the

@@ -12,13 +12,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from bball3x3.agents.base import BasePlayer
 from bball3x3.analysis.possessions import PossessionTracker
-from bball3x3.config import SimulationConfig
+from bball3x3.config import LLMConfig, SimulationConfig, load_llm_config
 from bball3x3.engine.loop import play_heuristic_game
 from bball3x3.logging.event_log import EventLogger
+from bball3x3.referee import (
+    LLMReferee,
+    LLMRefereeResult,
+    Referee,
+    RuleRetriever,
+    SyncLLMReferee,
+)
+from bball3x3.referee.index import DEFAULT_INDEX_DIR
+from bball3x3.referee.llm_referee import SYSTEM_PROMPT
 from bball3x3.schemas.agent import AgentOutput, CoordinationConfig
 from bball3x3.schemas.log import (
     DecisionRecord,
@@ -35,14 +46,16 @@ from bball3x3.schemas.log import (
     StateRecord,
     TurnoverEvent,
 )
-from bball3x3.schemas.referee import RefereeDecision
 
 MODEL_SLUG = "heuristic-v1"
 
+if TYPE_CHECKING:
+    from bball3x3.llm.base import LLMBackend
 
-def _config_hash(config: SimulationConfig) -> str:
+
+def _config_hash(config_snapshot: dict[str, Any]) -> str:
     canonical = json.dumps(
-        config.model_dump(mode="python"), sort_keys=True, separators=(",", ":")
+        config_snapshot, sort_keys=True, separators=(",", ":")
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -57,11 +70,23 @@ def run_logged_game(
     config: SimulationConfig | None = None,
     max_events: int = 2000,
     roster_path: str | None = None,
+    referee: Referee | LLMReferee | None = None,
+    agent_factory: Callable[[str], BasePlayer] | None = None,
+    llm_config: LLMConfig | None = None,
+    llm_backend: LLMBackend | None = None,
+    rule_retriever: RuleRetriever | None = None,
+    rule_index_dir: str | Path = DEFAULT_INDEX_DIR,
 ) -> dict[str, Any]:
-    """Play one heuristic game while writing a contracted JSONL log."""
+    """Play and log a game, selecting the LLM referee when enabled in config.
+
+    An explicitly supplied referee takes priority. ``llm_backend`` and
+    ``rule_retriever`` allow API-key-free games with a fake backend in tests.
+    """
     game_id = game_id or f"game_{seed}"
     replicate_id = replicate_id or f"seed_{seed}"
     logger = EventLogger(path)
+    player_label = "heuristic" if agent_factory is None else "custom-player"
+    model_slug = MODEL_SLUG if agent_factory is None else "custom-player"
 
     tracker: PossessionTracker | None = None
     next_possession = 2  # p0001 belongs to the opening possession
@@ -85,6 +110,16 @@ def run_logged_game(
             "players": {pid: p.team for pid, p in state.players.items()},
             "captain": "P1",
         }
+        snapshot = cfg.model_dump(mode="python")
+        prompt_hashes = {"players": model_slug}
+        if isinstance(referee_for_game, SyncLLMReferee):
+            llm_ref = referee_for_game.referee
+            snapshot["llm_referee"] = llm_ref.config.model_dump(mode="python")
+            snapshot["rule_index"] = {
+                "backend": llm_ref.retriever.backend,
+                "model": llm_ref.retriever.model_name,
+            }
+            prompt_hashes["referee"] = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
         start = GameStartRecord(
             schema_version=1,
             game_id=game_id,
@@ -92,14 +127,14 @@ def run_logged_game(
             replicate_id=replicate_id,
             seed=payload["seed"],
             first_possession=first,
-            team_conditions={"A": "heuristic", "B": "heuristic"},
-            matchup={"home": "heuristic", "away": "heuristic"},
+            team_conditions={"A": player_label, "B": player_label},
+            matchup={"home": player_label, "away": player_label},
             coordination={"A": CoordinationConfig(), "B": CoordinationConfig()},
             roster=roster,
-            config_hash=_config_hash(cfg),
-            config_snapshot=cfg.model_dump(mode="python"),
-            prompt_hashes={"players": MODEL_SLUG},
-            model_slug=MODEL_SLUG,
+            config_hash=_config_hash(snapshot),
+            config_snapshot=snapshot,
+            prompt_hashes=prompt_hashes,
+            model_slug=model_slug,
             code_commit=None,
             initial_state=state.model_copy(deep=True),
             initial_possession_id="p0001",
@@ -123,14 +158,17 @@ def run_logged_game(
             rec = payload["remaps"][pid]
             team = pid[:1]
             decisions_by_team[team] += 1
-            parsed = AgentOutput(action=raw.action.upper(), target=raw.target)
+            parsed = AgentOutput(
+                action=raw.action.upper(), target=raw.target,
+                conduct=raw.conduct, conduct_target=raw.conduct_target,
+            )
             if rec is None:
                 logger.write(
                     DecisionRecord(
                         event_idx=e,
                         player=pid,
                         team=team,  # type: ignore[arg-type]
-                        raw_output=f'<{pid} action="{raw.action}" target="{raw.target}"/>',
+                        raw_output=raw.model_dump_json(exclude_none=True),
                         parsed_output=parsed,
                         parse_ok=True,
                         invalid_reason=None,
@@ -144,7 +182,7 @@ def run_logged_game(
                         event_idx=e,
                         player=pid,
                         team=team,  # type: ignore[arg-type]
-                        raw_output=f'<{pid} action="{raw.action}" target="{raw.target}"/>',
+                        raw_output=raw.model_dump_json(exclude_none=True),
                         parsed_output=parsed,
                         parse_ok=True,
                         invalid_reason=rec.reason,
@@ -157,24 +195,41 @@ def run_logged_game(
 
         holder = payload["holder"]
         handler = payload["handler_action"]
-        contact = "contact" if payload["contact_detected"] else "no contact"
-        logger.write(
-            RefereeRecord(
+        trace = payload.get("referee_trace")
+        if isinstance(trace, LLMRefereeResult):
+            if trace.query != payload["referee_query"]:
+                raise ValueError("LLM retrieval query differs from the logged referee query")
+            logger.write(trace.as_log_record(
+                e,
+                decision=payload["referee_decision"],
+                rejected_output=payload["referee_rejected_output"],
+                rejection_reason=payload["referee_rejection_reason"],
+            ))
+        else:
+            logger.write(RefereeRecord(
                 event_idx=e,
-                query=f"event {e}: {handler or 'REBOUND'}"
-                + (f" by {holder}" if holder else "")
-                + f"; {contact}; rule-based review",
-                decision=RefereeDecision(),
-            )
-        )
+                query=payload["referee_query"],
+                decision=payload["referee_decision"],
+                rejected_output=payload["referee_rejected_output"],
+                rejection_reason=payload["referee_rejection_reason"],
+            ))
 
         scoring: list[ScoringEvent] = []
-        if event.get("scored"):
+        if event.get("scored") and event.get("points"):
             scoring.append(
                 ScoringEvent(
                     team=event["scoring_team"],
                     points=event["points"],
                     source="FIELD_GOAL",
+                    possession_id=before.possession_id,
+                )
+            )
+        if event.get("free_throw_points"):
+            scoring.append(
+                ScoringEvent(
+                    team=event["free_throw_team"],
+                    points=event["free_throw_points"],
+                    source="FREE_THROW",
                     possession_id=before.possession_id,
                 )
             )
@@ -199,7 +254,7 @@ def run_logged_game(
                 ShotAttempt(
                     team=holder[:1],  # type: ignore[arg-type]
                     shooter=holder,
-                    made=bool(event.get("scored")),
+                    made=bool(event.get("points")),
                 )
             ]
         turnovers: list[TurnoverEvent] | None = None
@@ -221,6 +276,10 @@ def run_logged_game(
                 for pid, p in payload["legalized"].items()
             },
             action_targets={pid: p.target for pid, p in payload["legalized"].items()},
+            outcomes=(
+                {"conduct_evidence": event["conduct_evidence"]}
+                if "conduct_evidence" in event else {}
+            ),
             possession_before=before,
             possession_after=None if finished else after,
             scoring_events=scoring,
@@ -267,13 +326,37 @@ def run_logged_game(
         else:
             _handle_event(payload)
 
+    adapter: SyncLLMReferee | None = None
     try:
+        if isinstance(referee, LLMReferee):
+            adapter = SyncLLMReferee(referee)
+            referee_for_game: Referee = adapter
+        elif referee is not None:
+            referee_for_game = referee
+        elif llm_config is not None and llm_config.referee.enabled and (
+            llm_config.referee.backend == "llm"
+        ):
+            from bball3x3.llm.client import OpenRouterClient
+
+            retriever = rule_retriever or RuleRetriever(
+                rule_index_dir, expected_model=llm_config.embeddings.model,
+            )
+            backend = llm_backend or OpenRouterClient(llm_config)
+            adapter = SyncLLMReferee(
+                LLMReferee(backend, retriever, llm_config.referee),
+                close_backend=llm_backend is None,
+            )
+            referee_for_game = adapter
+        else:
+            referee_for_game = referee
         summary = play_heuristic_game(
             seed=seed,
             config=config,
             max_events=max_events,
             roster_path=roster_path,
             on_event=_sink,
+            referee=referee_for_game,
+            agent_factory=agent_factory,
         )
         game_complete = final["finished"]
         if game_complete:
@@ -293,6 +376,8 @@ def run_logged_game(
             )
     finally:
         logger.close()
+        if adapter is not None:
+            adapter.close()
 
     return {
         "path": str(path),
@@ -313,6 +398,8 @@ def main() -> None:
     parser.add_argument("--experiment-id", type=str, default="manual")
     parser.add_argument("--replicate-id", type=str, default=None)
     parser.add_argument("--max-events", type=int, default=2000)
+    parser.add_argument("--llm-config", type=str, default=None)
+    parser.add_argument("--rule-index-dir", type=str, default=str(DEFAULT_INDEX_DIR))
     args = parser.parse_args()
     path = args.path or f"runs/game_{args.seed}.jsonl"
     result = run_logged_game(
@@ -322,6 +409,8 @@ def main() -> None:
         experiment_id=args.experiment_id,
         replicate_id=args.replicate_id,
         max_events=args.max_events,
+        llm_config=load_llm_config(args.llm_config) if args.llm_config else None,
+        rule_index_dir=args.rule_index_dir,
     )
     print(json.dumps(result, indent=2))
 

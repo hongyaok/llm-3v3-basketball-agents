@@ -138,6 +138,10 @@ class OpenRouterClient:
             request["response_format"] = response_format
         return request
 
+    async def aclose(self) -> None:
+        """Close the underlying async HTTP client after the last referee call."""
+        await self._sdk.close()
+
     async def complete(
         self,
         messages: Messages,

@@ -458,9 +458,32 @@ class RefereeRecord(LogModel):
     event_idx: EventIndex
     query: str
     retrieved_chunk_ids: list[str] = Field(default_factory=list)
+    # `decision` is the effective call. Preserve rejected proposals separately
+    # so they remain inspectable without being counted as calls by analysis.
     decision: RefereeDecision
+    rejected_output: dict[str, Any] | None = None
+    rejection_reason: Literal["OBJECTIVE_VIOLATION", "OBJECTIVE_EVENT"] | None = None
+    raw_output: str | None = None
+    failure_code: Literal["REF_PARSE_FAIL"] | None = None
+    parse_error: str | None = None
+    model: str | None = None
+    prompt_tokens: NonNegativeInt = 0
+    completion_tokens: NonNegativeInt = 0
     latency_ms: float = Field(default=0.0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_rejection(self) -> Self:
+        if (self.rejected_output is None) != (self.rejection_reason is None):
+            raise ValueError("Rejected output and rejection reason must appear together.")
+        if self.rejection_reason is not None and self.decision.call != "NONE":
+            raise ValueError("A rejected referee output must have an effective NONE call.")
+        if (self.failure_code is None) != (self.parse_error is None):
+            raise ValueError("Parse failure code and error must appear together.")
+        if self.failure_code is not None:
+            if self.decision.call != "NONE" or self.raw_output is None:
+                raise ValueError("A parse failure needs raw output and an effective NONE call.")
+        return self
 
 
 class StateRecord(LogModel):

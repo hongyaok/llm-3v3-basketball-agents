@@ -1,5 +1,6 @@
-"""Offline analysis commands for saved game logs."""
+"""Offline game-log analysis and rulebook indexing commands."""
 
+import json
 from pathlib import Path
 
 import typer
@@ -21,7 +22,33 @@ app = typer.Typer(no_args_is_help=True, help="Inspect saved 3v3 basketball game 
 
 @app.callback()
 def main() -> None:
-    """Offline tools; GAME arguments are paths to game JSONL files."""
+    """Offline tools for saved games and the local FIBA rulebook."""
+
+
+@app.command("build-index")
+def build_rule_index(
+    pdf: Path = typer.Argument(
+        Path("data/rules/fiba-3x3-basketball-rules-full-version.pdf"),
+        help="Local FIBA 3x3 rulebook PDF.",
+    ),
+    output_dir: Path = typer.Option(Path("data/rules"), "--output-dir"),
+    backend: str = typer.Option(
+        "sentence-transformers", "--backend", help="sentence-transformers or hash",
+    ),
+    model: str | None = typer.Option(None, "--model"),
+    force: bool = typer.Option(False, "--force", help="Replace existing index files."),
+) -> None:
+    """Extract referee-relevant clauses and write aligned chunks and embeddings."""
+    from .referee.index import build_index
+
+    try:
+        manifest = build_index(
+            pdf, output_dir, backend=backend, model=model, force=force,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(manifest, indent=2, sort_keys=True))
 
 
 @app.command()

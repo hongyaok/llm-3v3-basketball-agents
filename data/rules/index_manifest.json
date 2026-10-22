@@ -1,0 +1,29 @@
+{
+  "category_counts": {
+    "blocking_charging": 4,
+    "free_throws": 14,
+    "goaltending_interference": 12,
+    "illegal_use_of_hands": 1,
+    "loose_ball": 1,
+    "personal_contact": 21,
+    "screening": 1,
+    "shooting_foul": 8,
+    "stalling": 4,
+    "team_fouls": 7,
+    "technical": 11,
+    "unsportsmanlike": 11
+  },
+  "chunk_count": 95,
+  "chunks_sha256": "cc8eb0bbc7d15fc174f6bed4aa6fabacca748f6af5a27fa1ceedf51d1dbd4daf",
+  "embedding_backend": "sentence-transformers",
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "embedding_shape": [
+    95,
+    384
+  ],
+  "embeddings_sha256": "60ee88de872a9a337675a3af025302c96a95d83c4f1e5f8ec13010890b28d579",
+  "page_count": 74,
+  "schema_version": 1,
+  "source_pdf": "fiba-3x3-basketball-rules-full-version.pdf",
+  "source_sha256": "215357ff8e795ae91f3cb6dff17b91eebe4ccf76d3d39c9574a1e189076f68d1"
+}
