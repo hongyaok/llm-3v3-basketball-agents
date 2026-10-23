@@ -7,16 +7,21 @@ have a single source of truth.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from bball3x3.referee import Referee
 
 from bball3x3.config import SimulationConfig, load_roster_config
 from bball3x3.engine.abilities import build_abilities_map
 from bball3x3.engine.actions import DRIVE_DIRECTIONS, remap_invalid_action
 from bball3x3.engine.clock import advance_action_clock, is_shot_clock_violation
-from bball3x3.engine.contact import detect_contact
+from bball3x3.engine.conduct import collect_conduct_evidence
+from bball3x3.engine.contact import build_referee_state, detect_contact, referee_query_text
 from bball3x3.engine.court import ZONES, Court
 from bball3x3.engine.invariants import collect_violations
 from bball3x3.engine.movement import movement_label, speed_label
+from bball3x3.engine.referee_bridge import apply_referee_call, judge_referee_event
 from bball3x3.engine.resolvers import (
     resolve_drive,
     resolve_pass,
@@ -41,6 +46,7 @@ from bball3x3.engine.rules import (
 )
 from bball3x3.engine.state import create_initial_state, set_ball_holder
 from bball3x3.schemas.actions import ActionProposal, RemappedAction
+from bball3x3.schemas.referee import RefereeDecision
 from bball3x3.schemas.state import Abilities, GameState
 
 
@@ -108,12 +114,14 @@ class EngineSession:
         roster_path: str | None = None,
         abilities_map: dict[str, Abilities] | None = None,
         start_state: GameState | None = None,
+        referee: Referee | None = None,
     ) -> None:
         self.seed = seed
         self.config = config or SimulationConfig()
         self.roster_path = roster_path
         self.court = Court(self.config.court)
         self.rng = GameRNG.from_seed(seed)
+        self.referee = referee
 
         if abilities_map is not None:
             self.abilities_map: dict[str, Abilities] | None = abilities_map
@@ -216,6 +224,53 @@ class EngineSession:
                 if outcome["is_offensive"]
                 else "DEFENSIVE_REBOUND",
             }
+            contact, _ = detect_contact(
+                state=state,
+                actions=actions,
+                ball_handler_id=None,
+                primary_defender_id=None,
+                action_targets={
+                    pid: proposal.target for pid, proposal in legalized.items()
+                },
+                rebound_phase=True,
+                rng=rng,
+                config=config,
+            )
+            conduct_fields = collect_conduct_evidence(state, legalized, contact)
+            if conduct_fields:
+                event["conduct_evidence"] = conduct_fields["conduct_evidence"]
+            state.event_idx = self.events + 1
+            ref_state = build_referee_state(
+                state=state,
+                contact=contact,
+                current_event={
+                    "event_type": "REBOUND",
+                    "actions": actions,
+                    **conduct_fields,
+                },
+            )
+            referee_query = referee_query_text(ref_state)
+            if self.referee is not None:
+                referee_decision, rejected_output, rejection_reason = (
+                    judge_referee_event(self.referee, ref_state)
+                )
+                apply_referee_call(
+                    state=state,
+                    prev=prev,
+                    event=event,
+                    decision=referee_decision,
+                    config=config,
+                    court=court,
+                    rng=rng,
+                    abilities_map=abilities_map,
+                    fallback_shooter=outcome["winner"],
+                )
+                referee_trace = getattr(self.referee, "last_result", None)
+            else:
+                referee_decision = RefereeDecision()
+                rejected_output = None
+                rejection_reason = None
+                referee_trace = None
             found = collect_violations(prev, state, event, court, config)
             self.violations.extend(found)
             if state.offense != prev.offense:
@@ -238,7 +293,12 @@ class EngineSession:
                 "new_violations": found,
                 "holder": None,
                 "handler_action": None,
-                "contact_detected": False,
+                "contact_detected": bool(contact.contact_detected),
+                "referee_query": referee_query,
+                "referee_decision": referee_decision,
+                "referee_rejected_output": rejected_output,
+                "referee_rejection_reason": rejection_reason,
+                "referee_trace": referee_trace,
                 "rebound": True,
                 "finished": done,
                 "end_reason": self.end_reason,
@@ -529,7 +589,47 @@ class EngineSession:
         )
         event["elapsed_s"] = clock_res.elapsed_s
 
-        if is_shot_clock_violation(state):
+        state.event_idx = self.events + 1
+        conduct_fields = collect_conduct_evidence(state, legalized, contact)
+        if conduct_fields:
+            event["conduct_evidence"] = conduct_fields["conduct_evidence"]
+        ref_state = build_referee_state(
+            state=state,
+            contact=contact,
+            current_event={
+                "event_type": "SHOT_CLOCK"
+                if is_shot_clock_violation(state)
+                else handler_action,
+                "actions": actions,
+                "objective_violation": bool(event.get("possession_changed")),
+                "was_shooting": handler_action == "SHOOT",
+                **conduct_fields,
+            },
+        )
+        referee_query = referee_query_text(ref_state)
+        if self.referee is not None:
+            referee_decision, rejected_output, rejection_reason = judge_referee_event(
+                self.referee, ref_state
+            )
+            apply_referee_call(
+                state=state,
+                prev=prev,
+                event=event,
+                decision=referee_decision,
+                config=config,
+                court=court,
+                rng=rng,
+                abilities_map=abilities_map,
+                fallback_shooter=holder,
+            )
+            referee_trace = getattr(self.referee, "last_result", None)
+        else:
+            referee_decision = RefereeDecision()
+            rejected_output = None
+            rejection_reason = None
+            referee_trace = None
+
+        if referee_decision.call == "NONE" and is_shot_clock_violation(state):
             apply_shot_clock_violation(state, config)
             set_ball_holder(state, f"{state.offense}1")
             state.needs_clear = True
@@ -568,6 +668,11 @@ class EngineSession:
             "holder": holder,
             "handler_action": handler_action,
             "contact_detected": bool(contact.contact_detected),
+            "referee_query": referee_query,
+            "referee_decision": referee_decision,
+            "referee_rejected_output": rejected_output,
+            "referee_rejection_reason": rejection_reason,
+            "referee_trace": referee_trace,
             "rebound": False,
             "finished": done,
             "end_reason": _end_reason(state_for_payload, config) if done else None,

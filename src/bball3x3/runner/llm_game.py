@@ -38,6 +38,8 @@ from bball3x3.llm.base import LLMBackend, LLMResponse
 from bball3x3.logging.event_log import EventLogger
 from bball3x3.memory.personal import PersonalMemory
 from bball3x3.memory.similarity import Embedder
+from bball3x3.referee import LLMReferee, LLMRefereeResult, Referee, RuleRetriever, SyncLLMReferee
+from bball3x3.referee.index import DEFAULT_INDEX_DIR
 from bball3x3.schemas.actions import ActionProposal
 from bball3x3.schemas.agent import AgentOutput, CoordinationConfig
 from bball3x3.schemas.log import (
@@ -74,6 +76,7 @@ def _config_hash(
     snapshot = {
         "simulation": sim_cfg.model_dump(mode="python"),
         "llm_players": llm_cfg.players.model_dump(mode="python"),
+        "llm_referee": llm_cfg.referee.model_dump(mode="python"),
         "coordination": {k: v.model_dump(mode="python") for k, v in coordination.items()},
         "memory_settings": memory_settings,
     }
@@ -184,6 +187,10 @@ async def run_llm_game(
     max_events: int = 2000,
     checkpoint_path: str | Path | None = None,
     resume: bool = False,
+    referee: Referee | LLMReferee | None = None,
+    rule_retriever: RuleRetriever | None = None,
+    rule_index_dir: str | Path | None = None,
+    llm_backend_for_referee: LLMBackend | None = None,
 ) -> dict[str, Any]:
     """Run an async 6-player LLM game with full WS6 JSONL logging and checkpoint support."""
     log_path = Path(path)
@@ -243,10 +250,31 @@ async def run_llm_game(
         log_path.unlink()
 
     abilities_map = build_abilities_map(roster_cfg)
+    adapter: SyncLLMReferee | None = None
+    referee_for_game: Referee | SyncLLMReferee | None = None
+    if isinstance(referee, LLMReferee):
+        adapter = SyncLLMReferee(referee)
+        referee_for_game = adapter
+    elif referee is not None:
+        referee_for_game = referee
+    elif llm_cfg.referee.enabled and llm_cfg.referee.backend == "llm":
+        from bball3x3.llm.client import OpenRouterClient
+
+        retriever = rule_retriever or RuleRetriever(
+            rule_index_dir or DEFAULT_INDEX_DIR,
+            expected_model=llm_cfg.embeddings.model,
+        )
+        ref_backend = llm_backend_for_referee or OpenRouterClient(llm_cfg)
+        adapter = SyncLLMReferee(
+            LLMReferee(ref_backend, retriever, llm_cfg.referee),
+            close_backend=llm_backend_for_referee is None,
+        )
+        referee_for_game = adapter
     session = EngineSession(
         seed=seed,
         config=sim_cfg,
         abilities_map=abilities_map,
+        referee=referee_for_game,
     )
 
     init_mem_entries = build_initial_memory_entries(init_mem_cfg)
@@ -327,6 +355,15 @@ async def run_llm_game(
         config_snapshot={
             "simulation": sim_cfg.model_dump(mode="python"),
             "llm_players": llm_cfg.players.model_dump(mode="python"),
+            "llm_referee": llm_cfg.referee.model_dump(mode="python"),
+            "referee_effective": {
+                "has_referee": referee_for_game is not None,
+                "adapter": type(adapter).__name__ if adapter is not None else None,
+                "explicit_referee": type(referee).__name__ if referee is not None else None,
+                "override_note": (
+                    "referee.enabled/backend in-memory only; configs untouched"
+                ),
+            },
             "coordination": {k: v.model_dump(mode="python") for k, v in coord_flags.items()},
             "memory_settings": memory_settings,
         },
@@ -622,25 +659,44 @@ async def run_llm_game(
             # 3. RefereeRecord
             holder = payload["holder"]
             handler = payload["handler_action"]
-            contact = "contact" if payload["contact_detected"] else "no contact"
-            logger.write(
-                RefereeRecord(
-                    event_idx=e,
-                    query=f"event {e}: {handler or 'REBOUND'}"
-                    + (f" by {holder}" if holder else "")
-                    + f"; {contact}; rule-based review",
-                    decision=RefereeDecision(),
+            trace = payload.get("referee_trace")
+            if isinstance(trace, LLMRefereeResult):
+                logger.write(
+                    trace.as_log_record(
+                        e,
+                        decision=payload["referee_decision"],
+                        rejected_output=payload.get("referee_rejected_output"),
+                        rejection_reason=payload.get("referee_rejection_reason"),
+                    )
                 )
-            )
+            else:
+                logger.write(
+                    RefereeRecord(
+                        event_idx=e,
+                        query=payload.get("referee_query") or f"event {e}",
+                        decision=payload.get("referee_decision") or RefereeDecision(),
+                        rejected_output=payload.get("referee_rejected_output"),
+                        rejection_reason=payload.get("referee_rejection_reason"),
+                    )
+                )
 
             # 4. ResolutionRecord
             scoring: list[ScoringEvent] = []
-            if event.get("scored"):
+            if event.get("scored") and event.get("points"):
                 scoring.append(
                     ScoringEvent(
                         team=event["scoring_team"],
                         points=event["points"],
                         source="FIELD_GOAL",
+                        possession_id=before.possession_id,
+                    )
+                )
+            if event.get("free_throw_points"):
+                scoring.append(
+                    ScoringEvent(
+                        team=event["free_throw_team"],
+                        points=event["free_throw_points"],
+                        source="FREE_THROW",
                         possession_id=before.possession_id,
                     )
                 )
@@ -752,6 +808,8 @@ async def run_llm_game(
                 ckpt_path.unlink()
     finally:
         logger.close()
+        if adapter is not None:
+            adapter.close()
 
     return {
         "path": str(log_path),
