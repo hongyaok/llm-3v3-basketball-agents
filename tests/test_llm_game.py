@@ -483,3 +483,35 @@ def test_checkpoint_rejects_changed_embedding_settings(tmp_path):
     assert resumed_client.calls == []
     assert path.read_bytes() == original_log
     assert checkpoint_path.read_bytes() == original_checkpoint
+
+@pytest.mark.parametrize("team", ["A", "B"])
+def test_first_possession_is_applied_and_logged(tmp_path, team):
+    sim_cfg, llm_cfg = _get_test_configs()
+    log_path = tmp_path / f"fp_{team}.jsonl"
+    run(
+        run_llm_game(
+            llm=FakeLLM(LegalXMLPolicy()), path=log_path, seed=42,
+            sim_config=sim_cfg, llm_config=llm_cfg, max_events=1, first_possession=team,
+        )
+    )
+    start = read_game_log(log_path).by_type["game_start"][0]
+    assert start.first_possession == team
+
+
+def test_checkpoint_rejects_changed_first_possession(tmp_path):
+    sim_cfg, llm_cfg = _get_test_configs()
+    log_path = tmp_path / "fp_resume.jsonl"
+    with pytest.raises(QuotaExceededError):
+        run(
+            run_llm_game(
+                llm=QuotaAfterNBackend(max_calls=8), path=log_path, seed=44,
+                sim_config=sim_cfg, llm_config=llm_cfg, first_possession="A",
+            )
+        )
+    with pytest.raises(ValueError, match="first possession"):
+        run(
+            run_llm_game(
+                llm=FakeLLM(LegalXMLPolicy()), path=log_path, seed=44,
+                sim_config=sim_cfg, llm_config=llm_cfg, first_possession="B", resume=True,
+            )
+        )

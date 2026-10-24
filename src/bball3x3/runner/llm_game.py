@@ -191,6 +191,7 @@ async def run_llm_game(
     rule_retriever: RuleRetriever | None = None,
     rule_index_dir: str | Path | None = None,
     llm_backend_for_referee: LLMBackend | None = None,
+    first_possession: str | None = None,
 ) -> dict[str, Any]:
     """Run an async 6-player LLM game with full WS6 JSONL logging and checkpoint support."""
     log_path = Path(path)
@@ -243,6 +244,8 @@ async def run_llm_game(
             )
         if ckpt_payload.get("seed") != seed:
             raise ValueError("Checkpoint seed differs from this run")
+        if ckpt_payload.get("first_possession") != first_possession:
+            raise ValueError("Checkpoint first possession differs from this run")
         saved_event_decisions = list(ckpt_payload.get("events", []))
         if log_path.exists():
             log_path.unlink()
@@ -275,6 +278,7 @@ async def run_llm_game(
         config=sim_cfg,
         abilities_map=abilities_map,
         referee=referee_for_game,
+        first_possession=first_possession,
     )
 
     init_mem_entries = build_initial_memory_entries(init_mem_cfg)
@@ -398,6 +402,7 @@ async def run_llm_game(
             {
                 "game_id": game_id,
                 "seed": seed,
+                "first_possession": first_possession,
                 "config_hash": config_identity,
                 "events": saved_event_decisions,
             }
