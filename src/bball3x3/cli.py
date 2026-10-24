@@ -1,6 +1,7 @@
-"""Offline game-log analysis and rulebook indexing commands."""
+"""Experiment running, game-log analysis and rulebook indexing commands."""
 
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -49,6 +50,75 @@ def build_rule_index(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(json.dumps(manifest, indent=2, sort_keys=True))
+
+
+def _load_env(path: Path = Path(".env")) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" in line and not line.strip().startswith("#"):
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+@app.command("run-experiment")
+def run_experiment_command(
+    config: Path = typer.Argument(..., exists=True, dir_okay=False,
+                                  help="Experiment YAML, e.g. configs/experiments/pilot.yaml."),
+    out_root: Path = typer.Option(Path("runs"), "--out", help="Logs go to <out>/<experiment_id>/."),
+    max_events: int = typer.Option(2000, "--max-events", min=1),
+    memory: str = typer.Option("embedding", "--memory", help="embedding or exact"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="List planned games, call no model."),
+) -> None:
+    """Play every seed twice with swapped first possession, resuming unfinished games."""
+    import asyncio
+
+    from .config import load_experiment_config, load_llm_config
+    from .runner.experiment import is_complete, plan_games, run_experiment
+
+    exp = load_experiment_config(config)
+    out_dir = out_root / exp.experiment_id
+    if dry_run:
+        for spec in plan_games(exp, out_dir):
+            done = "done" if is_complete(spec.path) else "todo"
+            typer.echo(f"{done}  {spec.game_id}  seed={spec.seed}  first={spec.first_possession}")
+        return
+    if memory not in ("embedding", "exact"):
+        typer.echo("Error: --memory must be embedding or exact", err=True)
+        raise typer.Exit(code=1)
+
+    from .llm.budget import BudgetTracker
+    from .llm.client import OpenRouterClient
+    from .memory.embeddings import LocalEmbedder
+
+    _load_env()
+    llm_cfg = load_llm_config()
+    budget = BudgetTracker(llm_cfg.runtime.budget.get("max_usd_per_experiment"))
+    embedder = LocalEmbedder(llm_cfg.embeddings.model) if memory == "embedding" else None
+    llm_referee = llm_cfg.referee.enabled and llm_cfg.referee.backend == "llm"
+
+    async def go() -> dict:
+        client = OpenRouterClient(llm_cfg, budget=budget)
+        try:
+            return await run_experiment(
+                exp, llm=client, llm_config=llm_cfg, out_dir=out_dir, budget=budget,
+                # each game's referee runs on its own loop thread, so it gets its own client
+                referee_backend_factory=(
+                    (lambda: OpenRouterClient(llm_cfg, budget=budget)) if llm_referee else None
+                ),
+                max_events=max_events, embedder=embedder,
+            )
+        finally:
+            await client.aclose()
+
+    result = asyncio.run(go())
+    for game_id, entry in sorted(result["games"].items()):
+        typer.echo(f"{entry['status']:9} {game_id}  score={entry.get('score')}")
+    typer.echo(f"spent ${result['spent_usd']:.4f}, manifest at {out_dir / 'manifest.json'}")
+    if result["errors"]:
+        for error in result["errors"]:
+            typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command()

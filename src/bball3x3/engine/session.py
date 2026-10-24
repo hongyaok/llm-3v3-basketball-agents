@@ -115,6 +115,7 @@ class EngineSession:
         abilities_map: dict[str, Abilities] | None = None,
         start_state: GameState | None = None,
         referee: Referee | None = None,
+        first_possession: str | None = None,
     ) -> None:
         self.seed = seed
         self.config = config or SimulationConfig()
@@ -133,8 +134,11 @@ class EngineSession:
         else:
             self.abilities_map = None
 
+        # first_possession None keeps the seeded coin flip
         self.state: GameState = (
-            start_state if start_state is not None else create_initial_state(self.config, self.rng)
+            start_state
+            if start_state is not None
+            else create_initial_state(self.config, self.rng, first_possession)
         )
         self.invalid = 0
         self.total_proposals = 0

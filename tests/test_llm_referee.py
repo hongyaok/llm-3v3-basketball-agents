@@ -104,9 +104,19 @@ def test_llm_referee_sends_state_query_excerpts_and_parses_call():
     assert asyncio.run(referee.judge(state)).call == "FOUL"
 
 
+@pytest.mark.parametrize("reply", ["```xml\n" + _xml() + "\n```", "```\n" + _xml() + "\n```"])
+def test_single_fence_around_valid_output_is_accepted(reply):
+    result = asyncio.run(LLMReferee(StubBackend(reply), StubRetriever()).judge_with_trace(
+        _screen_state()
+    ))
+    assert result.failure_code is None
+    assert result.decision.call == "NONE"
+    assert result.raw_output == reply
+
+
 @pytest.mark.parametrize("reply", [
     "garbage",
-    "```xml\n" + _xml() + "\n```",
+    "Here is my call:\n```xml\n" + _xml() + "\n```",
     _xml(call="FOUL", foul="TRUE", offender="A2", fouled_player="B2",
          foul_type="OFFENSIVE_FOUL", rules="R999"),
     _xml(call="FOUL", foul="TRUE", offender="A2", fouled_player="B2",

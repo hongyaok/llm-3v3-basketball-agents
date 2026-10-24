@@ -7,23 +7,21 @@ provider:
     allow_fallbacks: false
 
 players:
-  model: nvidia/nemotron-3-super-120b-a12b:free
+  model: mistralai/mistral-small-3.2-24b-instruct
   temperature: 0.7
   top_p: 1.0
-  max_tokens: 10000
+  max_tokens: 1500
   seed: null
   output_format: xml
   include_rationale: true
   timeout_s: 45
   max_retries: 3
   repair_attempts: 1
-  reasoning:
-    effort: medium
 
 referee:
   enabled: true
   backend: llm
-  model: nvidia/nemotron-3-ultra-550b-a55b:free
+  model: mistralai/mistral-small-3.2-24b-instruct
   temperature: 0.0
   max_tokens: 2000
   output_format: xml
@@ -35,9 +33,9 @@ embeddings:
 
 runtime:
   max_concurrent_requests: 12
-  max_requests_per_minute: 18
+  max_requests_per_minute: 60
   cache:
-    enabled: true
+    enabled: false
     path: .cache/llm_cache.sqlite
   budget:
-    max_usd_per_experiment: 25.0
+    max_usd_per_experiment: 10.0

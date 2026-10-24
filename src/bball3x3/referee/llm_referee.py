@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from xml.etree import ElementTree
@@ -26,7 +27,7 @@ You may call FOUL, judgement-based VIOLATION (GOALTENDING,
 BASKET_INTERFERENCE, STALLING), or NONE. A FOUL needs a valid offender,
 foul type and cited excerpt ID. A violation needs an offender, violation type
 and cited excerpt ID. Do not call a foul solely because contact occurred.
-Return exactly one XML element and no other text:
+Return exactly one XML element and no other text. Do not wrap it in a code block or markdown:
 <REFEREE_DECISION call="NONE" foul="FALSE" offender="NONE"
  fouled_player="NONE" foul_type="NONE" violation_type="NONE" rules=""/>
 Allowed foul_type values: DEFENSIVE_FOUL, OFFENSIVE_FOUL, SHOOTING_FOUL,
@@ -42,6 +43,8 @@ _FOUL_TYPES = frozenset({
     "UNSPORTSMANLIKE", "TECHNICAL",
 })
 _VIOLATION_TYPES = frozenset({"GOALTENDING", "BASKET_INTERFERENCE", "STALLING"})
+# one fence wrapping the whole reply is unwrapped, everything else stays strict
+_FENCE = re.compile(r"^```(?:xml)?\s*(.*?)\s*```$", re.DOTALL | re.IGNORECASE)
 
 
 def parse_referee_xml(
@@ -50,8 +53,12 @@ def parse_referee_xml(
     retrieved_chunk_ids: tuple[str, ...] | list[str],
 ) -> RefereeDecision:
     """Parse one strict XML decision and reject ungrounded or invalid calls."""
+    text = text.strip()
+    fenced = _FENCE.match(text)
+    if fenced:
+        text = fenced.group(1)
     try:
-        root = ElementTree.fromstring(text.strip())
+        root = ElementTree.fromstring(text)
     except ElementTree.ParseError as exc:
         raise ValueError("Invalid referee XML") from exc
     if (

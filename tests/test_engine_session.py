@@ -134,3 +134,10 @@ def test_format_legal_action_hints():
     assert format_legal_action_hint(state, "A2", "CUT") == "CUT (optional target: zone)"
     assert format_legal_action_hint(state, "B1", "DENY") == "DENY (target: A1 | A2 | A3)"
     assert format_legal_action_hint(state, "A1", "SHOOT") == "SHOOT"
+
+
+def test_first_possession_override_and_default():
+    for team in ("A", "B"):
+        assert EngineSession(seed=7, first_possession=team).state.offense == team
+    default = create_initial_state(SimulationConfig(), GameRNG.from_seed(7))
+    assert EngineSession(seed=7).state.offense == default.offense
