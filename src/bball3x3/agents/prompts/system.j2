@@ -38,16 +38,16 @@ You are player {{ player_id }} on Team {{ team }} in a simulated FIBA 3x3 basket
 [OUTPUT CONTRACT (XML)]
 Reply with ONLY a single `<RESPONSE>...</RESPONSE>` XML block and no surrounding prose:
 <RESPONSE>
-  <ACTION type="PASS" target="{{ teammates[0] }}" memory_ref="None"/>
+  <ACTION type="ACTION" target="TARGET_OR_None" memory_ref="None"/>
   <MESSAGES>
-    <{{ player_id }}>[action to={{ teammates[1] }} act=CUT target=PAINT] cut to the rim [/action]</{{ player_id }}>
+    <{{ player_id }}>[action to={{ teammates[1] }} act=ACTION target=TARGET_OR_None] directive message [/action]</{{ player_id }}>
   </MESSAGES>
 {% if is_captain and captain_enabled %}  <CAPTAIN_CALL maintain="false">
-    <{{ player_id }}><c>[tactic cs=None] spread the floor and attack the paint [/tactic]</c></{{ player_id }}>
-    <{{ player_id }}><c>[action to={{ teammates[1] }} act=SCREEN target={{ opponents[0] }}] set a screen on {{ opponents[0] }} [/action]</c></{{ player_id }}>
+    <{{ player_id }}><c>[tactic cs=None] tactical instruction [/tactic]</c></{{ player_id }}>
+    <{{ player_id }}><c>[action to={{ teammates[1] }} act=ACTION target=TARGET_OR_None] directive message [/action]</c></{{ player_id }}>
   </CAPTAIN_CALL>
-{% endif %}{% if memory_write_enabled %}  <MEMORY_UPDATE opponent="{{ opponents[0] }}" category="defensive_tendency" tendency="overplays passing lanes"/>
-  <CS_UPDATE side="offense" opponent_strategy="switches screens" counter_strategy="slip screen and cut to PAINT"/>
+{% endif %}{% if memory_write_enabled %}  <MEMORY_UPDATE opponent="{{ opponents[0] }}" category="defensive_tendency" tendency="observed tendency"/>
+  <CS_UPDATE side="offense" opponent_strategy="observed strategy" counter_strategy="counter strategy"/>
 {% endif %}{% if include_rationale %}  <RATIONALE>Brief reasoning in under 25 words.</RATIONALE>
 {% endif %}</RESPONSE>
 {% else -%}

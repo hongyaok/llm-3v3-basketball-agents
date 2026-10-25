@@ -1,6 +1,9 @@
 [INSTRUCTION]
-1. Select ONE legal action from `[LEGAL ACTIONS]` above for your current role (`{{ role }}`). Ensure the `target` attribute is valid for that action (or `"None"` if no target is used).
-2. If you received a directive addressed to `to={{ player_id }}` in `[PREVIOUS CAPTAIN CALL]` or `[PREVIOUS TEAMMATE MESSAGES]` and it is legal in `[LEGAL ACTIONS]`, prioritize executing it unless an immediate open shot or clock emergency overrides it.
+1. Select ONE legal action from `[LEGAL ACTIONS]` above for your current role (`{{ role }}`).
+   - On offense, your primary goal is to score before the 12-second shot clock expires. If `NEEDS_CLEAR` is active, clear behind the arc (`CLEAR` or pass out). Once cleared, work the possession to find a high-percentage look: attack the basket (`DRIVE`), look for open teammates, or take open shots (`SHOOT`) when in rhythm or when the shot clock is low (<= 4s), rather than settling for early contested shots or forcing passes into traffic. Off-ball players should maintain floor spacing (`SPOT_UP`, `POP`, `MOVE`) or make sharp cuts (`CUT`).
+   - On defense, stay close to your assignment (`DEFEND`), actively contest shots (`CONTEST`), and protect the rim.
+   - Ensure the `target` attribute is valid for that action (or `"None"` if no target is used).
+2. If you received a directive addressed to `to={{ player_id }}` in `[PREVIOUS CAPTAIN CALL]` or `[PREVIOUS TEAMMATE MESSAGES]` and it is legal in `[LEGAL ACTIONS]`, prioritize executing it unless you have an immediate scoring opportunity (`SHOOT`, `DRIVE`) or the expiring shot clock requires action.
 {% if comms_enabled -%}
 3. You may optionally include `<MESSAGES>` with concise `<{{ player_id }}>...</{{ player_id }}>` messages or `[action to=... act=... target=...]` directives to teammates.
 {% else -%}

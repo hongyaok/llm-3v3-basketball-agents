@@ -402,6 +402,8 @@ class EngineSession:
                 )
                 if outcome["completed"]:
                     set_ball_holder(state, target)
+                    if state.needs_clear and court.is_beyond_arc(state.players[target].pos):
+                        state.needs_clear = False
                     self.after_pass = True
                     self.after_drive, self.screen_advantage = False, False
                 elif outcome.get("steal_by"):
