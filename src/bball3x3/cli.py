@@ -25,6 +25,22 @@ def main() -> None:
     """Offline tools for saved games and the local FIBA rulebook."""
 
 
+@app.command("dashboard")
+def dashboard(
+    results: Path = typer.Option(Path("../abl_comms_v1_results"), "--results"),
+    runs: Path = typer.Option(Path("abl_comms_v1_runs"), "--runs"),
+    port: int = typer.Option(8765, "--port", min=1, max=65535),
+) -> None:
+    """Open a local results dashboard and game replay server (no LLM calls)."""
+    from .display.dashboard import serve_dashboard
+
+    try:
+        serve_dashboard(results, runs, port)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
 @app.command("build-index")
 def build_rule_index(
     pdf: Path = typer.Argument(

@@ -66,6 +66,54 @@ uv run ruff check .
 # or if venv is activated: ruff check .
 ```
 
+## results dashboard and game replay
+
+Courtside is a local front end for the communication-ablation results and saved
+games. From the repository root, with `abl_comms_v1_runs/` checked in and the
+results export beside the repository, run:
+
+```bash
+.venv/bin/bball dashboard
+# or:
+uv run bball dashboard
+```
+
+Open **http://127.0.0.1:8765**. The server reads `../abl_comms_v1_results` and
+the checked-in `abl_comms_v1_runs` by default. To select other locations or a
+different port:
+
+```bash
+uv run bball dashboard --results /path/to/abl_comms_v1_results \
+  --runs /path/to/abl_comms_v1_runs --port 8765
+```
+
+The results directory can be the downloaded parent folder or the experiment
+folder containing `export/games.csv`, `export/teams.csv`,
+`export/possessions.csv`, `stats.json`, and `plots/adaptation.csv`. Replay logs
+are matched recursively by game ID, so exported paths from another machine
+do not need changing. Multiple candidate experiments or duplicate logs are
+reported instead of choosing one silently.
+
+- **Overview:** wins, pooled rates, paired seed effects, saved confidence
+  intervals and Wilcoxon results, and adaptation curves. Unavailable measures
+  keep their evidence status; the paired estimate is distinct from a difference
+  of pooled rates.
+- **Game library:** search by seed/game, filter by first possession or winner,
+  and open any matched replay.
+- **Court replay:** play, pause, step, scrub, adjust speed, jump to a possession
+  or scoring event, and select a player. Inspect executed actions and rationales,
+  teammate messages (including delivery timing and suppression), captain calls,
+  resolution evidence and referee decisions. Space toggles playback; arrow keys
+  step while focus is outside an interactive control.
+- **Methods & data:** experiment configuration, interpretation notes, evidence
+  limitations, and downloads of the original result tables/statistics.
+
+Court positions are recorded states after each event. Trails connect saved
+previous/current positions; the display does not infer movement between events
+or invent shot locations when the log has no shot evidence. Game logs load on
+demand. The server binds only to localhost, makes no LLM calls, and leaves source
+files untouched. No Node installation or additional dependencies are required.
+
 ## referee rulebook index
 
 Place the official 3x3 rulebook PDF at
