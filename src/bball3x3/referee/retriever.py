@@ -52,7 +52,8 @@ def categories_for_state(state: RefereeState) -> tuple[str, ...]:
 
     if event.get("offensive_contact") is True and primary == "blocking_charging":
         return (primary,)
-    if shooting and contact.contact_detected:
+    # an off-ball screen during a shot is still a screening question, not a shooting foul
+    if shooting and contact.contact_detected and contact.contact_type != "SCREEN_CONTACT":
         return ("shooting_foul",)
     if primary is not None:
         if any(fouls >= 6 for fouls in state.team_fouls.values()):

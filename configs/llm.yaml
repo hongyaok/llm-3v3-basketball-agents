@@ -4,7 +4,7 @@ provider:
   app_name: dsa4213-3x3-agents
   routing:
     order: []
-    allow_fallbacks: false
+    allow_fallbacks: true
 
 players:
   model: mistralai/mistral-small-3.2-24b-instruct

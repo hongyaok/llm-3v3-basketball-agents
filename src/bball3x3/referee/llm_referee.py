@@ -27,6 +27,15 @@ You may call FOUL, judgement-based VIOLATION (GOALTENDING,
 BASKET_INTERFERENCE, STALLING), or NONE. A FOUL needs a valid offender,
 foul type and cited excerpt ID. A violation needs an offender, violation type
 and cited excerpt ID. Do not call a foul solely because contact occurred.
+Use the engine's contact evidence in DETERMINISTIC_QUERY together with the excerpts:
+- SCREEN_CONTACT with screener_moving=true is an illegal (moving) screen: call FOUL,
+  foul_type=OFFENSIVE_FOUL, offender=contact_initiator, fouled_player=contact_recipient.
+  With screener_moving=false the screen is legal: return NONE.
+- BODY_CONTACT_DRIVE with defender_set=true means the defender held a legal guarding
+  position, so the driver charged: OFFENSIVE_FOUL by contact_initiator on
+  contact_recipient. With defender_set=false the moving defender blocked the driver:
+  DEFENSIVE_FOUL by contact_initiator on contact_recipient.
+- For other contact, call a foul only if the excerpts and evidence show illegal contact.
 Return exactly one XML element and no other text. Do not wrap it in a code block or markdown:
 <REFEREE_DECISION call="NONE" foul="FALSE" offender="NONE"
  fouled_player="NONE" foul_type="NONE" violation_type="NONE" rules=""/>

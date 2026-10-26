@@ -123,9 +123,24 @@ def detect_contact(
     involved = [first_off, first_def]
     loc = _midpoint(state.players[first_off].pos, state.players[first_def].pos)
     details: dict = {"trigger_actions": upper}
+
+    def _moved(pid: str) -> bool:
+        player = state.players[pid]
+        return player.prev_pos is not None and player.prev_pos != player.pos
+
     if contact_type == "SCREEN_CONTACT":
         details["screen_target"] = action_targets.get(first_off) or ball_handler_id
         details["contact_recipient"] = first_def
+        # Art. 33.7: a screen is legal only if the screener was stationary at contact.
+        details["contact_initiator"] = first_off
+        details["screener_moving"] = _moved(first_off)
+    elif contact_type == "BODY_CONTACT_DRIVE":
+        # Art. 33.3/33.8/33.9: a set defender (legal guarding position) is charged into;
+        # a defender still moving into the driver's path is responsible for the contact.
+        defender_set = not _moved(first_def)
+        details["defender_set"] = defender_set
+        details["contact_initiator"] = first_off if defender_set else first_def
+        details["contact_recipient"] = first_def if defender_set else first_off
     elif contact_type == "LOOSE_BALL":
         details["contact_initiator"] = first_off
         details["contact_recipient"] = first_def
@@ -224,13 +239,18 @@ def referee_query_text(ref_state: RefereeState) -> str:
                 pid for pid, target in ref_state.matchups.items()
                 if target == candidates[0] and pid in ref_state.players
             )[:1]
+    # Label off/def by the team that had the ball when the actions were chosen. The state
+    # is post-resolution, so after a made shot, steal or rebound ref_state.possession is
+    # already the other team and would swap the roles.
+    before = event.get("possession_before")
+    role_team = before if before in ("A", "B") else ref_state.possession
     offense = next(
         (pid for pid in candidates if pid in ref_state.players
-         and ref_state.players[pid].team == ref_state.possession), None,
+         and ref_state.players[pid].team == role_team), None,
     )
     defense = next(
         (pid for pid in candidates if pid in ref_state.players
-         and ref_state.players[pid].team != ref_state.possession), None,
+         and ref_state.players[pid].team != role_team), None,
     )
     ordered_actions = ",".join(
         f"{pid}:{_query_atom(actions[pid])}" for pid in sorted(actions)
@@ -251,9 +271,12 @@ def referee_query_text(ref_state: RefereeState) -> str:
         f"contact_initiator={_query_atom(initiator)}",
         f"contact_recipient={_query_atom(recipient)}",
         f"screen_target={_query_atom(details.get('screen_target'))}",
+        f"screener_moving={_query_atom(details.get('screener_moving'))}",
+        f"defender_set={_query_atom(details.get('defender_set'))}",
         f"ball={ref_state.ball.status}",
         f"holder={_query_atom(ref_state.ball_handler)}",
         f"possession={ref_state.possession}",
+        f"possession_before={role_team}",
         f"shot_in_air={_query_atom(ref_state.ball.status == 'IN_SHOT')}",
         f"shooting_action={_query_atom(shot_action)}",
         f"objective_violation={_query_atom(event.get('objective_violation') is True)}",

@@ -250,6 +250,8 @@ class EngineSession:
                 current_event={
                     "event_type": "REBOUND",
                     "actions": actions,
+                    # roles are judged by who had the ball when the actions were chosen
+                    "possession_before": prev.offense,
                     **conduct_fields,
                 },
             )
@@ -282,13 +284,20 @@ class EngineSession:
             self.events += 1
             state.event_idx = self.events
             done = _finished(state, config, self.ot_baseline)
-            self.finished = done
-            self.end_reason = _end_reason(state, config) if done else None
+            # Same tied-at-expiry handling as the main path: without it a rebound that
+            # ends regulation level stays LIVE at 0.0s instead of starting overtime.
+            tied_expiry = state.phase == "LIVE" and is_tied_at_expiry(state)
+            state_for_payload = state.model_copy(deep=True) if tied_expiry else state
+            end_reason = _end_reason(state_for_payload, config) if done else None
+            if tied_expiry:
+                self.ot_baseline = start_overtime(state, config)
+            self.finished = _finished(state, config, self.ot_baseline) and not tied_expiry
+            self.end_reason = end_reason
             return {
                 "type": "event",
                 "event_idx": self.events,
                 "prev": prev,
-                "state": state,
+                "state": state_for_payload,
                 "proposals": proposals,
                 "legalized": legalized,
                 "remaps": remaps,
@@ -607,8 +616,16 @@ class EngineSession:
                 if is_shot_clock_violation(state)
                 else handler_action,
                 "actions": actions,
-                "objective_violation": bool(event.get("possession_changed")),
+                # Only engine-owned violations (out of bounds, shot clock) are objective.
+                # A made basket, steal or strip also changes possession but can still
+                # carry a foul (e.g. and-one, foul on the steal), so the referee must judge it.
+                "objective_violation": (
+                    event.get("possession_reason") == "OOB_TURNOVER"
+                    or is_shot_clock_violation(state)
+                ),
                 "was_shooting": handler_action == "SHOOT",
+                # roles are judged by who had the ball when the actions were chosen
+                "possession_before": prev.offense,
                 **conduct_fields,
             },
         )
