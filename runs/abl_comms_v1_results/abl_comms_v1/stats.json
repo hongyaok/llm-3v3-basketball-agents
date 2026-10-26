@@ -1,0 +1,980 @@
+{
+  "schema_version": 1,
+  "baseline": "A_full",
+  "analysis_seed": 4213,
+  "bootstrap_replicates": 10000,
+  "pairing": "two A/B first-possession variants per seed; game difference averaged per seed",
+  "missing_pair_policy": "exclude seed from that metric and report reason",
+  "bootstrap_unit": "seed (both games kept together)",
+  "wilcoxon_unit": "per-seed average difference; two-sided; zeros dropped",
+  "model_note": "Exploratory Gaussian approximation to discrete points. Both opposing teams share a game random intercept; cross-game seed dependence is not modeled. Use seed-paired results for primary inference. OT is a separate time category.",
+  "source_excluded_games": [],
+  "results": [
+    {
+      "experiment_id": "abl_comms_v1",
+      "comparison": "B_no_comm",
+      "metrics": {
+        "ppp": {
+          "status": "ok",
+          "effect_mean": -0.18596218245356178,
+          "n_seeds": 10,
+          "n_games": 20,
+          "positive_seeds": 3,
+          "negative_seeds": 7,
+          "zero_seeds": 0,
+          "sign_agreement": 0.7,
+          "paired_seeds": [
+            {
+              "seed": "101",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ],
+              "game_differences": [
+                -0.2165242165242165,
+                -0.3097826086956522
+              ],
+              "difference": -0.26315341260993436
+            },
+            {
+              "seed": "102",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ],
+              "game_differences": [
+                0.20105820105820105,
+                0.20370370370370372
+              ],
+              "difference": 0.20238095238095238
+            },
+            {
+              "seed": "103",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ],
+              "game_differences": [
+                -0.4540229885057472,
+                0.03703703703703709
+              ],
+              "difference": -0.20849297573435505
+            },
+            {
+              "seed": "104",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ],
+              "game_differences": [
+                0.20454545454545453,
+                0.5549999999999999
+              ],
+              "difference": 0.37977272727272726
+            },
+            {
+              "seed": "105",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ],
+              "game_differences": [
+                -0.8095238095238095,
+                -0.6005291005291005
+              ],
+              "difference": -0.705026455026455
+            },
+            {
+              "seed": "106",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ],
+              "game_differences": [
+                -0.6196581196581197,
+                -0.34615384615384615
+              ],
+              "difference": -0.4829059829059829
+            },
+            {
+              "seed": "107",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ],
+              "game_differences": [
+                -0.23931623931623935,
+                -0.08620689655172414
+              ],
+              "difference": -0.16276156793398175
+            },
+            {
+              "seed": "108",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ],
+              "game_differences": [
+                -0.4444444444444445,
+                0.48769230769230776
+              ],
+              "difference": 0.02162393162393164
+            },
+            {
+              "seed": "109",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ],
+              "game_differences": [
+                -0.20512820512820512,
+                -0.65
+              ],
+              "difference": -0.4275641025641026
+            },
+            {
+              "seed": "110",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ],
+              "game_differences": [
+                -0.2367724867724868,
+                -0.19021739130434784
+              ],
+              "difference": -0.21349493903841732
+            }
+          ],
+          "excluded_seeds": [],
+          "bootstrap_95_ci": [
+            -0.37224936727301794,
+            0.0051941655635995695
+          ],
+          "wilcoxon": {
+            "status": "ok",
+            "statistic": 11.0,
+            "p_value": 0.10546875,
+            "zero_method": "wilcox"
+          }
+        },
+        "maar": {
+          "status": "insufficient_pairs",
+          "effect_mean": null,
+          "n_seeds": 0,
+          "n_games": 0,
+          "positive_seeds": 0,
+          "negative_seeds": 0,
+          "zero_seeds": 0,
+          "sign_agreement": null,
+          "paired_seeds": [],
+          "excluded_seeds": [
+            {
+              "seed": "101",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ]
+            },
+            {
+              "seed": "102",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ]
+            },
+            {
+              "seed": "103",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ]
+            },
+            {
+              "seed": "104",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ]
+            },
+            {
+              "seed": "105",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ]
+            },
+            {
+              "seed": "106",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ]
+            },
+            {
+              "seed": "107",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ]
+            },
+            {
+              "seed": "108",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ]
+            },
+            {
+              "seed": "109",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ]
+            },
+            {
+              "seed": "110",
+              "reason": "B_no_comm_maar_not_applicable",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ]
+            }
+          ],
+          "bootstrap_95_ci": null,
+          "wilcoxon": {
+            "status": "insufficient_pairs",
+            "p_value": null
+          }
+        },
+        "ccar": {
+          "status": "insufficient_pairs",
+          "effect_mean": null,
+          "n_seeds": 0,
+          "n_games": 0,
+          "positive_seeds": 0,
+          "negative_seeds": 0,
+          "zero_seeds": 0,
+          "sign_agreement": null,
+          "paired_seeds": [],
+          "excluded_seeds": [
+            {
+              "seed": "101",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ]
+            },
+            {
+              "seed": "102",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ]
+            },
+            {
+              "seed": "103",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ]
+            },
+            {
+              "seed": "104",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ]
+            },
+            {
+              "seed": "105",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ]
+            },
+            {
+              "seed": "106",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ]
+            },
+            {
+              "seed": "107",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ]
+            },
+            {
+              "seed": "108",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ]
+            },
+            {
+              "seed": "109",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ]
+            },
+            {
+              "seed": "110",
+              "reason": "B_no_comm_ccar_undefined",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ]
+            }
+          ],
+          "bootstrap_95_ci": null,
+          "wilcoxon": {
+            "status": "insufficient_pairs",
+            "p_value": null
+          }
+        },
+        "cssr": {
+          "status": "ok",
+          "effect_mean": -0.3177753550154866,
+          "n_seeds": 10,
+          "n_games": 20,
+          "positive_seeds": 1,
+          "negative_seeds": 9,
+          "zero_seeds": 0,
+          "sign_agreement": 0.9,
+          "paired_seeds": [
+            {
+              "seed": "101",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ],
+              "game_differences": [
+                -0.7055520898315658,
+                -0.06451612903225801
+              ],
+              "difference": -0.3850341094319119
+            },
+            {
+              "seed": "102",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ],
+              "game_differences": [
+                0.10666095960213606,
+                -0.6434531651922957
+              ],
+              "difference": -0.2683961027950798
+            },
+            {
+              "seed": "103",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ],
+              "game_differences": [
+                -0.1624086965467577,
+                -0.6501377410468321
+              ],
+              "difference": -0.4062732187967949
+            },
+            {
+              "seed": "104",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ],
+              "game_differences": [
+                -0.0021752450980392357,
+                -0.29474548440065684
+              ],
+              "difference": -0.14846036474934804
+            },
+            {
+              "seed": "105",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ],
+              "game_differences": [
+                -0.6468716861081654,
+                -0.38392857142857145
+              ],
+              "difference": -0.5154001287683684
+            },
+            {
+              "seed": "106",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ],
+              "game_differences": [
+                -0.7498577120091064,
+                -0.5320078580138192
+              ],
+              "difference": -0.6409327850114628
+            },
+            {
+              "seed": "107",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ],
+              "game_differences": [
+                0.6672928533915081,
+                -0.4195653582070217
+              ],
+              "difference": 0.12386374759224322
+            },
+            {
+              "seed": "108",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ],
+              "game_differences": [
+                -0.28279939714804647,
+                -0.1574827586206896
+              ],
+              "difference": -0.22014107788436804
+            },
+            {
+              "seed": "109",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ],
+              "game_differences": [
+                -0.6427993118105455,
+                -0.26735018499948127
+              ],
+              "difference": -0.4550747484050134
+            },
+            {
+              "seed": "110",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ],
+              "game_differences": [
+                -0.3229548229548229,
+                -0.2008547008547008
+              ],
+              "difference": -0.26190476190476186
+            }
+          ],
+          "excluded_seeds": [],
+          "bootstrap_95_ci": [
+            -0.43966979239223275,
+            -0.1843653182220665
+          ],
+          "wilcoxon": {
+            "status": "ok",
+            "statistic": 1.0,
+            "p_value": 0.00390625,
+            "zero_method": "wilcox"
+          }
+        },
+        "maur": {
+          "status": "ok",
+          "effect_mean": -0.0016047315824106463,
+          "n_seeds": 10,
+          "n_games": 20,
+          "positive_seeds": 1,
+          "negative_seeds": 6,
+          "zero_seeds": 3,
+          "sign_agreement": 0.8571428571428571,
+          "paired_seeds": [
+            {
+              "seed": "101",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ],
+              "game_differences": [
+                -0.0028011204481792717,
+                0.0
+              ],
+              "difference": -0.0014005602240896359
+            },
+            {
+              "seed": "102",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ],
+              "game_differences": [
+                0.0,
+                0.0
+              ],
+              "difference": 0.0
+            },
+            {
+              "seed": "103",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ],
+              "game_differences": [
+                0.0,
+                -0.008064516129032258
+              ],
+              "difference": -0.004032258064516129
+            },
+            {
+              "seed": "104",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ],
+              "game_differences": [
+                -0.0013020833333333333,
+                -0.0014367816091954023
+              ],
+              "difference": -0.0013694324712643677
+            },
+            {
+              "seed": "105",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ],
+              "game_differences": [
+                0.0,
+                0.0
+              ],
+              "difference": 0.0
+            },
+            {
+              "seed": "106",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ],
+              "game_differences": [
+                -0.0013175230566534915,
+                -0.0027210884353741495
+              ],
+              "difference": -0.0020193057460138205
+            },
+            {
+              "seed": "107",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ],
+              "game_differences": [
+                -0.014947683109118086,
+                -0.0013386880856760374
+              ],
+              "difference": -0.008143185597397061
+            },
+            {
+              "seed": "108",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ],
+              "game_differences": [
+                0.00727802037845706,
+                -0.001333333333333334
+              ],
+              "difference": 0.002972343522561863
+            },
+            {
+              "seed": "109",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ],
+              "game_differences": [
+                -0.0013550135501355014,
+                -0.0027548209366391185
+              ],
+              "difference": -0.00205491724338731
+            },
+            {
+              "seed": "110",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ],
+              "game_differences": [
+                0.0,
+                0.0
+              ],
+              "difference": 0.0
+            }
+          ],
+          "excluded_seeds": [],
+          "bootstrap_95_ci": [
+            -0.003442133100034859,
+            -2.1404386750846603e-05
+          ],
+          "wilcoxon": {
+            "status": "ok",
+            "statistic": 5.0,
+            "p_value": 0.15625,
+            "zero_method": "wilcox"
+          }
+        },
+        "grounded_maur": {
+          "status": "ok",
+          "effect_mean": -0.0017502919899797873,
+          "n_seeds": 10,
+          "n_games": 20,
+          "positive_seeds": 1,
+          "negative_seeds": 6,
+          "zero_seeds": 3,
+          "sign_agreement": 0.8571428571428571,
+          "paired_seeds": [
+            {
+              "seed": "101",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ],
+              "game_differences": [
+                -0.0028011204481792717,
+                0.0
+              ],
+              "difference": -0.0014005602240896359
+            },
+            {
+              "seed": "102",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ],
+              "game_differences": [
+                0.0,
+                0.0
+              ],
+              "difference": 0.0
+            },
+            {
+              "seed": "103",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ],
+              "game_differences": [
+                0.0,
+                -0.008064516129032258
+              ],
+              "difference": -0.004032258064516129
+            },
+            {
+              "seed": "104",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ],
+              "game_differences": [
+                -0.0013020833333333333,
+                -0.0014367816091954023
+              ],
+              "difference": -0.0013694324712643677
+            },
+            {
+              "seed": "105",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ],
+              "game_differences": [
+                0.0,
+                0.0
+              ],
+              "difference": 0.0
+            },
+            {
+              "seed": "106",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ],
+              "game_differences": [
+                -0.0013175230566534915,
+                -0.0027210884353741495
+              ],
+              "difference": -0.0020193057460138205
+            },
+            {
+              "seed": "107",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ],
+              "game_differences": [
+                -0.014947683109118086,
+                -0.0013386880856760374
+              ],
+              "difference": -0.008143185597397061
+            },
+            {
+              "seed": "108",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ],
+              "game_differences": [
+                0.004366812227074236,
+                -0.001333333333333334
+              ],
+              "difference": 0.0015167394468704508
+            },
+            {
+              "seed": "109",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ],
+              "game_differences": [
+                -0.0013550135501355014,
+                -0.0027548209366391185
+              ],
+              "difference": -0.00205491724338731
+            },
+            {
+              "seed": "110",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ],
+              "game_differences": [
+                0.0,
+                0.0
+              ],
+              "difference": 0.0
+            }
+          ],
+          "excluded_seeds": [],
+          "bootstrap_95_ci": [
+            -0.003468822204904668,
+            -0.0003632302062582881
+          ],
+          "wilcoxon": {
+            "status": "ok",
+            "statistic": 3.0,
+            "p_value": 0.078125,
+            "zero_method": "wilcox"
+          }
+        },
+        "iar": {
+          "status": "ok",
+          "effect_mean": -0.007489753011337893,
+          "n_seeds": 10,
+          "n_games": 20,
+          "positive_seeds": 3,
+          "negative_seeds": 7,
+          "zero_seeds": 0,
+          "sign_agreement": 0.7,
+          "paired_seeds": [
+            {
+              "seed": "101",
+              "game_ids": [
+                "abl_comms_v1_s101_A",
+                "abl_comms_v1_s101_B"
+              ],
+              "game_differences": [
+                -0.00980392156862745,
+                -0.02599388379204893
+              ],
+              "difference": -0.01789890268033819
+            },
+            {
+              "seed": "102",
+              "game_ids": [
+                "abl_comms_v1_s102_A",
+                "abl_comms_v1_s102_B"
+              ],
+              "game_differences": [
+                -0.021021021021021023,
+                -0.013175230566534916
+              ],
+              "difference": -0.01709812579377797
+            },
+            {
+              "seed": "103",
+              "game_ids": [
+                "abl_comms_v1_s103_A",
+                "abl_comms_v1_s103_B"
+              ],
+              "game_differences": [
+                -0.005486968449931413,
+                0.0013440860215053752
+              ],
+              "difference": -0.002071441214213019
+            },
+            {
+              "seed": "104",
+              "game_ids": [
+                "abl_comms_v1_s104_A",
+                "abl_comms_v1_s104_B"
+              ],
+              "game_differences": [
+                -0.010416666666666668,
+                -0.020114942528735635
+              ],
+              "difference": -0.015265804597701152
+            },
+            {
+              "seed": "105",
+              "game_ids": [
+                "abl_comms_v1_s105_A",
+                "abl_comms_v1_s105_B"
+              ],
+              "game_differences": [
+                -0.01771336553945249,
+                -0.004464285714285712
+              ],
+              "difference": -0.011088825626869102
+            },
+            {
+              "seed": "106",
+              "game_ids": [
+                "abl_comms_v1_s106_A",
+                "abl_comms_v1_s106_B"
+              ],
+              "game_differences": [
+                -0.018445322793148877,
+                -0.008163265306122446
+              ],
+              "difference": -0.013304294049635661
+            },
+            {
+              "seed": "107",
+              "game_ids": [
+                "abl_comms_v1_s107_A",
+                "abl_comms_v1_s107_B"
+              ],
+              "game_differences": [
+                0.007473841554559043,
+                -0.004016064257028114
+              ],
+              "difference": 0.0017288886487654646
+            },
+            {
+              "seed": "108",
+              "game_ids": [
+                "abl_comms_v1_s108_A",
+                "abl_comms_v1_s108_B"
+              ],
+              "game_differences": [
+                -0.008733624454148473,
+                0.010666666666666668
+              ],
+              "difference": 0.0009665211062590976
+            },
+            {
+              "seed": "109",
+              "game_ids": [
+                "abl_comms_v1_s109_A",
+                "abl_comms_v1_s109_B"
+              ],
+              "game_differences": [
+                0.010840108401084013,
+                -0.004132231404958678
+              ],
+              "difference": 0.0033539384980626674
+            },
+            {
+              "seed": "110",
+              "game_ids": [
+                "abl_comms_v1_s110_A",
+                "abl_comms_v1_s110_B"
+              ],
+              "game_differences": [
+                -0.0042016806722689065,
+                -0.004237288135593223
+              ],
+              "difference": -0.004219484403931065
+            }
+          ],
+          "excluded_seeds": [],
+          "bootstrap_95_ci": [
+            -0.012329982783752145,
+            -0.0027191258476718387
+          ],
+          "wilcoxon": {
+            "status": "ok",
+            "statistic": 7.0,
+            "p_value": 0.037109375,
+            "zero_method": "wilcox"
+          }
+        }
+      },
+      "possession_model": {
+        "additive": {
+          "status": "fit_failed",
+          "n_possessions": 1052,
+          "n_games": 20,
+          "time_bins": [
+            "q1",
+            "q2",
+            "q3",
+            "q4",
+            "q5"
+          ],
+          "family": "Gaussian linear mixed model",
+          "random_intercept": "game_id",
+          "formula": "points ~ C(condition, Treatment(reference='A_full')) + score_diff_before + C(time_bin)",
+          "warnings": [
+            "Random effects covariance is singular",
+            "The random effects covariance matrix is singular.",
+            "The MLE may be on the boundary of the parameter space.",
+            "The random effects covariance matrix is singular.",
+            "The Hessian matrix at the estimated parameter values is not positive definite."
+          ],
+          "error": "Fit returned non-finite estimates or intervals"
+        },
+        "condition_by_time": {
+          "status": "fit_failed",
+          "n_possessions": 1052,
+          "n_games": 20,
+          "time_bins": [
+            "q1",
+            "q2",
+            "q3",
+            "q4",
+            "q5"
+          ],
+          "family": "Gaussian linear mixed model",
+          "random_intercept": "game_id",
+          "formula": "points ~ C(condition, Treatment(reference='A_full')) * C(time_bin) + score_diff_before",
+          "warnings": [
+            "Random effects covariance is singular",
+            "The random effects covariance matrix is singular.",
+            "The MLE may be on the boundary of the parameter space.",
+            "The random effects covariance matrix is singular.",
+            "The Hessian matrix at the estimated parameter values is not positive definite."
+          ],
+          "error": "Fit returned non-finite estimates or intervals"
+        },
+        "excluded_possessions": 0
+      }
+    }
+  ]
+}

@@ -219,6 +219,14 @@ __marimo__/
 
 # simulation runs
 runs/
+# Finder metadata is never part of an experiment artifact.
+**/.DS_Store
+# Keep the reproducible communication-ablation artifact set under version control.
+!runs/
+!runs/abl_comms_v1_results/
+!runs/abl_comms_v1_results/**
+!runs/abl_comms_v1_runs/
+!runs/abl_comms_v1_runs/**
 
 # Third-party reference clone (dev-only, see adopt_basketworld.md)
 third_party/

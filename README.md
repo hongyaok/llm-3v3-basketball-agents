@@ -69,8 +69,8 @@ uv run ruff check .
 ## results dashboard and game replay
 
 Courtside is a local front end for the communication-ablation results and saved
-games. From the repository root, with `abl_comms_v1_runs/` checked in and the
-results export beside the repository, run:
+games. From the repository root, with the experiment artifacts under
+`runs/`, run:
 
 ```bash
 .venv/bin/bball dashboard
@@ -78,9 +78,9 @@ results export beside the repository, run:
 uv run bball dashboard
 ```
 
-Open **http://127.0.0.1:8765**. The server reads `../abl_comms_v1_results` and
-the checked-in `abl_comms_v1_runs` by default. To select other locations or a
-different port:
+Open **http://127.0.0.1:8765**. The server reads
+`runs/abl_comms_v1_results` and `runs/abl_comms_v1_runs` by default. To select
+other locations or a different port:
 
 ```bash
 uv run bball dashboard --results /path/to/abl_comms_v1_results \

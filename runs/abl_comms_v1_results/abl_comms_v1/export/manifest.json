@@ -1,0 +1,22 @@
+{
+  "excluded_games": [],
+  "game_count": 20,
+  "include_incomplete": false,
+  "message_window": 1,
+  "model_eligible": "complete game, validated closed possession, known time bin",
+  "omitted_possessions": [],
+  "possession_points": "owner points; points_A and points_B include exceptional scoring",
+  "possession_row_count": 1052,
+  "rate_columns": [
+    "numerator",
+    "denominator",
+    "rate",
+    "status"
+  ],
+  "same_event_transfer": "apply points attributed to outgoing segments before opening next",
+  "schema_version": 1,
+  "score_diff_before": "owning team score minus opponent score at possession opening",
+  "team_row_count": 40,
+  "time_bin": "five equal elapsed-regulation-clock bins q1–q5; OT is ot",
+  "time_bin_source": "clock/phase before the possession's start event"
+}

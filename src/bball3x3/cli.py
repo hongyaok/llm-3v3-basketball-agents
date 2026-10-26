@@ -27,8 +27,8 @@ def main() -> None:
 
 @app.command("dashboard")
 def dashboard(
-    results: Path = typer.Option(Path("../abl_comms_v1_results"), "--results"),
-    runs: Path = typer.Option(Path("abl_comms_v1_runs"), "--runs"),
+    results: Path = typer.Option(Path("runs/abl_comms_v1_results"), "--results"),
+    runs: Path = typer.Option(Path("runs/abl_comms_v1_runs"), "--runs"),
     port: int = typer.Option(8765, "--port", min=1, max=65535),
 ) -> None:
     """Open a local results dashboard and game replay server (no LLM calls)."""
