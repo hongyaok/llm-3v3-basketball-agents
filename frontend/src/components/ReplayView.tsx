@@ -27,15 +27,34 @@ import {
 } from "@/lib/format";
 import {
   activePossessionId,
+  describeShotEvent,
   eventActor,
   eventCues,
   eventTitle,
+  formatTurnoverDetail,
   momentKinds,
   possessionFrameIndex,
 } from "@/lib/replay-logic";
 import { Legend, LineChartSvg, PageHeading } from "./SharedUi";
 
 type InspectorTab = "decisions" | "team talk" | "outcome";
+
+function easeOutCubic(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - clamped, 3);
+}
+
+function easeOutQuad(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  return 1 - (1 - clamped) * (1 - clamped);
+}
+
+function easeInOutQuad(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  return clamped < 0.5
+    ? 2 * clamped * clamped
+    : 1 - Math.pow(-2 * clamped + 2, 2) / 2;
+}
 
 function computeCourtGeometry(court: GameReplay["court"]) {
   const cell = Number(court.cell_m) || 1;
@@ -86,16 +105,211 @@ function getCourtPlayerPositions(
   return positions;
 }
 
-function getBallTargetPosition(
-  state: FrameState,
-  xy: (pos: [number, number]) => [number, number]
+function getRestingBallPosition(
+  game: GameReplay,
+  frameIdx: number,
+  xy: (pos: [number, number]) => [number, number],
+  basket: [number, number]
 ): [number, number] {
+  const frame = game.frames[frameIdx];
+  const state = frame?.state;
+  if (!state) return basket;
+
+  if (state.ball.status === "LOOSE") {
+    const nextState = game.frames[frameIdx + 1]?.state;
+    const nextHolder = nextState?.ball.holder;
+    if (nextState && nextHolder) {
+      const nextPositions = getCourtPlayerPositions(nextState, xy);
+      const rebPos = nextPositions?.get(nextHolder) || xy(nextState.ball.pos);
+      const dx = rebPos[0] - basket[0];
+      const dy = rebPos[1] - basket[1];
+      const len = Math.hypot(dx, dy) || 1;
+      return [basket[0] + (dx / len) * 18, basket[1] + (dy / len) * 18];
+    }
+    return [basket[0] + 14, basket[1] + 14];
+  }
+
   const players = Object.values(state.players).sort((a, b) =>
     a.id.localeCompare(b.id)
   );
   const holder = players.find((p) => p.has_ball || p.id === state.ball.holder);
-  const [x, y] = xy(holder ? holder.pos : state.ball.pos);
-  return [x + (holder ? 23 : 0), y + (holder ? 15 : 0)];
+  if (holder) {
+    const playerPositions = getCourtPlayerPositions(state, xy);
+    const [x, y] = playerPositions?.get(holder.id) || xy(holder.pos);
+    return [x + 23, y + 15];
+  }
+  const [x, y] = xy(state.ball.pos);
+  return [x, y];
+}
+
+function getShooterReleasePosition(
+  game: GameReplay,
+  frameIdx: number,
+  shooterId: string,
+  xy: (pos: [number, number]) => [number, number],
+  basket: [number, number]
+): [number, number] {
+  const prevState = game.frames[Math.max(0, frameIdx - 1)]?.state;
+  if (prevState && prevState.players[shooterId]) {
+    const prevPositions = getCourtPlayerPositions(prevState, xy);
+    const [x, y] =
+      prevPositions?.get(shooterId) || xy(prevState.players[shooterId].pos);
+    return [x + 23, y + 15];
+  }
+  return getRestingBallPosition(game, Math.max(0, frameIdx - 1), xy, basket);
+}
+
+function computeBallTransition(
+  game: GameReplay,
+  frameIdx: number,
+  progress: number,
+  xy: (pos: [number, number]) => [number, number],
+  basket: [number, number],
+  fallbackStart?: [number, number]
+): { pos: [number, number]; scale: number } {
+  const endPos = getRestingBallPosition(game, frameIdx, xy, basket);
+  const shotDesc = describeShotEvent(game, frameIdx);
+
+  if (shotDesc?.kind === "score") {
+    const releasePos = getShooterReleasePosition(
+      game,
+      frameIdx,
+      shotDesc.actor,
+      xy,
+      basket
+    );
+    const dist = Math.hypot(
+      basket[0] - releasePos[0],
+      basket[1] - releasePos[1]
+    );
+    const arcHeight = Math.min(48, Math.max(18, dist * 0.22));
+
+    if (progress <= 0.52) {
+      const t = easeOutCubic(progress / 0.52);
+      const lift = arcHeight * Math.sin(t * Math.PI);
+      return {
+        pos: [
+          releasePos[0] + (basket[0] - releasePos[0]) * t,
+          releasePos[1] + (basket[1] - releasePos[1]) * t - lift,
+        ],
+        scale: 1 + 0.32 * Math.sin(t * Math.PI),
+      };
+    }
+    if (progress <= 0.78) {
+      const t = (progress - 0.52) / 0.26;
+      return {
+        pos: [basket[0], basket[1] + t * 6],
+        scale: 1.06 - t * 0.06,
+      };
+    }
+    const t = easeInOutQuad((progress - 0.78) / 0.22);
+    return {
+      pos: [
+        basket[0] + (endPos[0] - basket[0]) * t,
+        basket[1] + 6 + (endPos[1] - (basket[1] + 6)) * t,
+      ],
+      scale: 1,
+    };
+  }
+
+  if (shotDesc?.kind === "miss") {
+    const releasePos = getShooterReleasePosition(
+      game,
+      frameIdx,
+      shotDesc.actor,
+      xy,
+      basket
+    );
+    const dist = Math.hypot(
+      basket[0] - releasePos[0],
+      basket[1] - releasePos[1]
+    );
+    const arcHeight = Math.min(48, Math.max(18, dist * 0.22));
+    const isLoose = game.frames[frameIdx]?.state.ball.status === "LOOSE";
+
+    if (isLoose) {
+      if (progress <= 0.68) {
+        const t = easeOutCubic(progress / 0.68);
+        const lift = arcHeight * Math.sin(t * Math.PI);
+        return {
+          pos: [
+            releasePos[0] + (basket[0] - releasePos[0]) * t,
+            releasePos[1] + (basket[1] - releasePos[1]) * t - lift,
+          ],
+          scale: 1 + 0.32 * Math.sin(t * Math.PI),
+        };
+      }
+      const t = easeOutQuad((progress - 0.68) / 0.32);
+      const hop = 12 * Math.sin(t * Math.PI);
+      return {
+        pos: [
+          basket[0] + (endPos[0] - basket[0]) * t,
+          basket[1] + (endPos[1] - basket[1]) * t - hop,
+        ],
+        scale: 1 + 0.08 * Math.sin(t * Math.PI),
+      };
+    }
+
+    // Missed shot with simultaneous shot-clock turnover
+    if (progress <= 0.52) {
+      const t = easeOutCubic(progress / 0.52);
+      const lift = arcHeight * Math.sin(t * Math.PI);
+      return {
+        pos: [
+          releasePos[0] + (basket[0] - releasePos[0]) * t,
+          releasePos[1] + (basket[1] - releasePos[1]) * t - lift,
+        ],
+        scale: 1 + 0.32 * Math.sin(t * Math.PI),
+      };
+    }
+    if (progress <= 0.74) {
+      const t = (progress - 0.52) / 0.22;
+      return {
+        pos: [
+          basket[0] + 14 * t,
+          basket[1] + 10 * t - 8 * Math.sin(t * Math.PI),
+        ],
+        scale: 1,
+      };
+    }
+    const t = easeInOutQuad((progress - 0.74) / 0.26);
+    return {
+      pos: [
+        basket[0] + 14 + (endPos[0] - (basket[0] + 14)) * t,
+        basket[1] + 10 + (endPos[1] - (basket[1] + 10)) * t,
+      ],
+      scale: 1,
+    };
+  }
+
+  if (shotDesc?.kind === "rebound") {
+    const startPos = getRestingBallPosition(
+      game,
+      Math.max(0, frameIdx - 1),
+      xy,
+      basket
+    );
+    const t = easeOutCubic(progress);
+    const hop = 16 * Math.sin(t * Math.PI);
+    return {
+      pos: [
+        startPos[0] + (endPos[0] - startPos[0]) * t,
+        startPos[1] + (endPos[1] - startPos[1]) * t - hop,
+      ],
+      scale: 1 + 0.16 * Math.sin(t * Math.PI),
+    };
+  }
+
+  const startPos =
+    fallbackStart ||
+    getRestingBallPosition(game, Math.max(0, frameIdx - 1), xy, basket);
+  return {
+    pos: [
+      startPos[0] + (endPos[0] - startPos[0]) * progress,
+      startPos[1] + (endPos[1] - startPos[1]) * progress,
+    ],
+    scale: 1,
+  };
 }
 
 export function ReplayView({
@@ -227,13 +441,20 @@ export function ReplayView({
 
   // Step / position update on court SVG
   useEffect(() => {
-    if (!game || !svgRef.current) return;
+    if (!game || !svgRef.current || playing) return;
     const svg = svgRef.current;
     const f = game.frames[frameIndex];
     const s = f.state;
-    const { xy } = computeCourtGeometry(game.court);
+    const { xy, basket } = computeCourtGeometry(game.court);
     const playerPositions = getCourtPlayerPositions(s, xy);
     if (!playerPositions) return;
+
+    const shotDesc = describeShotEvent(game, frameIndex);
+    const previousState =
+      frameIndex > 0 ? game.frames[frameIndex - 1]?.state : undefined;
+    const prevPlayerPositions = previousState
+      ? getCourtPlayerPositions(previousState, xy)
+      : null;
 
     const targets = new Map<string, [number, number]>();
     const from = new Map<string, [number, number]>();
@@ -245,35 +466,40 @@ export function ReplayView({
       const target = playerPositions.get(pid);
       if (!target) return;
       targets.set(pid, target);
-      from.set(pid, displayedPositionsRef.current.get(pid) || target);
+      const startPos = shotDesc
+        ? prevPlayerPositions?.get(pid) ||
+          displayedPositionsRef.current.get(pid) ||
+          target
+        : displayedPositionsRef.current.get(pid) || target;
+      from.set(pid, startPos);
       nodes.set(pid, node);
     });
 
     const ballGroup = svg.querySelector<SVGGElement>(
       'g[aria-label="Basketball"]'
     );
-    if (ballGroup) {
-      const ballTarget = getBallTargetPosition(s, xy);
-      targets.set("__ball__", ballTarget);
-      from.set(
-        "__ball__",
-        displayedPositionsRef.current.get("__ball__") || ballTarget
-      );
-      nodes.set("__ball__", ballGroup);
-    }
+    const fallbackBallStart =
+      displayedPositionsRef.current.get("__ball__") ||
+      getRestingBallPosition(game, Math.max(0, frameIndex - 1), xy, basket);
 
     if (stepAnimRef.current !== null) {
       cancelAnimationFrame(stepAnimRef.current);
       stepAnimRef.current = null;
     }
 
-    const animate = shouldAnimateStepRef.current;
+    const animate = shouldAnimateStepRef.current || shotDesc !== null;
     shouldAnimateStepRef.current = false;
     const reducedMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const duration = animate && !reducedMotion ? Math.min(320, speed) : 0;
-    const previous = game.frames[frameIndex - 1]?.state;
+    const duration =
+      animate && !reducedMotion
+        ? shotDesc?.kind === "score"
+          ? Math.max(820, Math.min(1150, speed * 1.45))
+          : shotDesc
+          ? Math.max(600, Math.min(900, speed * 1.15))
+          : Math.min(320, speed)
+        : 0;
 
     const draw = (progress: number) => {
       for (const [id, target] of targets) {
@@ -283,27 +509,44 @@ export function ReplayView({
         nodes.get(id)?.setAttribute("transform", `translate(${x} ${y})`);
         displayedPositionsRef.current.set(id, [x, y]);
       }
+
+      if (ballGroup) {
+        const { pos: ballPos, scale: ballScale } = computeBallTransition(
+          game,
+          frameIndex,
+          progress,
+          xy,
+          basket,
+          fallbackBallStart
+        );
+        ballGroup.setAttribute(
+          "transform",
+          `translate(${ballPos[0]} ${ballPos[1]}) scale(${ballScale.toFixed(3)})`
+        );
+        displayedPositionsRef.current.set("__ball__", ballPos);
+      }
+
       if (
         duration &&
-        previous?.phase === s.phase &&
-        typeof previous.game_clock_s === "number" &&
+        previousState?.phase === s.phase &&
+        typeof previousState?.game_clock_s === "number" &&
         typeof s.game_clock_s === "number" &&
         clockNodeRef.current?.firstChild
       ) {
         clockNodeRef.current.firstChild.nodeValue = clock(
-          previous.game_clock_s +
-            (s.game_clock_s - previous.game_clock_s) * progress
+          previousState.game_clock_s +
+            (s.game_clock_s - previousState.game_clock_s) * progress
         );
       }
       if (
         duration &&
-        typeof previous?.shot_clock_s === "number" &&
-        previous.shot_clock_s >= s.shot_clock_s &&
+        typeof previousState?.shot_clock_s === "number" &&
+        previousState.shot_clock_s >= s.shot_clock_s &&
         shotClockNodeRef.current
       ) {
         shotClockNodeRef.current.textContent = `${fmt(
-          previous.shot_clock_s +
-            (s.shot_clock_s - previous.shot_clock_s) * progress,
+          previousState.shot_clock_s +
+            (s.shot_clock_s - previousState.shot_clock_s) * progress,
           1
         )}s`;
       }
@@ -329,7 +572,7 @@ export function ReplayView({
         stepAnimRef.current = null;
       }
     };
-  }, [frameIndex, game, speed]);
+  }, [frameIndex, game, playing, speed]);
 
   // Continuous playback loop
   useEffect(() => {
@@ -339,22 +582,41 @@ export function ReplayView({
       stepAnimRef.current = null;
     }
 
-    const pace = speed;
     const reducedMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const anchorFrame = frameIndexRef.current;
-    const anchorTime = performance.now() - playbackFractionRef.current * pace;
-    const { xy } = computeCourtGeometry(game.court);
+    const { xy, basket } = computeCourtGeometry(game.court);
+
+    const frameDurationMs = (idx: number) => {
+      const desc = describeShotEvent(game, idx);
+      if (desc?.kind === "score") return Math.max(speed, 850);
+      if (desc?.kind === "miss" || desc?.kind === "rebound") {
+        return Math.max(speed, 620);
+      }
+      return speed;
+    };
+
+    let activeIdx =
+      frameIndexRef.current === 0 && game.frames.length > 1
+        ? 1
+        : frameIndexRef.current;
+    if (activeIdx !== frameIndexRef.current) {
+      frameIndexRef.current = activeIdx;
+      setFrameIndex(activeIdx);
+    }
+    let currentFrameDur = frameDurationMs(activeIdx);
+    let frameStartTime =
+      performance.now() - playbackFractionRef.current * currentFrameDur;
 
     const paintPlaybackCourt = (idx: number, progress: number) => {
       const svg = svgRef.current;
       if (!svg) return;
-      const current = game.frames[idx]?.state;
-      const next = game.frames[idx + 1]?.state;
-      if (!current || !next) return;
-      const fromPos = getCourtPlayerPositions(current, xy);
-      const toPos = getCourtPlayerPositions(next, xy);
+      const targetState = game.frames[idx]?.state;
+      const prevState =
+        idx > 0 ? game.frames[idx - 1]?.state : game.frames[0]?.state;
+      if (!targetState || !prevState) return;
+      const fromPos = getCourtPlayerPositions(prevState, xy);
+      const toPos = getCourtPlayerPositions(targetState, xy);
       if (!fromPos || !toPos) return;
 
       svg.querySelectorAll<SVGGElement>(".court-player").forEach((node) => {
@@ -374,64 +636,77 @@ export function ReplayView({
         displayedPositionsRef.current.set(id, position);
       });
 
-      const ballStart = getBallTargetPosition(current, xy);
-      const ballEnd = getBallTargetPosition(next, xy);
-      const ball: [number, number] = [
-        ballStart[0] + (ballEnd[0] - ballStart[0]) * progress,
-        ballStart[1] + (ballEnd[1] - ballStart[1]) * progress,
-      ];
       const ballGroup = svg.querySelector<SVGGElement>(
         'g[aria-label="Basketball"]'
       );
-      ballGroup?.setAttribute("transform", `translate(${ball[0]} ${ball[1]})`);
-      displayedPositionsRef.current.set("__ball__", ball);
+      if (ballGroup) {
+        const { pos: ball, scale: ballScale } = computeBallTransition(
+          game,
+          idx,
+          progress,
+          xy,
+          basket
+        );
+        ballGroup.setAttribute(
+          "transform",
+          `translate(${ball[0]} ${ball[1]}) scale(${ballScale.toFixed(3)})`
+        );
+        displayedPositionsRef.current.set("__ball__", ball);
+      }
 
       if (
-        current.phase === next.phase &&
-        typeof current.game_clock_s === "number" &&
-        typeof next.game_clock_s === "number" &&
+        prevState.phase === targetState.phase &&
+        typeof prevState.game_clock_s === "number" &&
+        typeof targetState.game_clock_s === "number" &&
         clockNodeRef.current?.firstChild
       ) {
         clockNodeRef.current.firstChild.nodeValue = clock(
-          current.game_clock_s +
-            (next.game_clock_s - current.game_clock_s) * progress
+          prevState.game_clock_s +
+            (targetState.game_clock_s - prevState.game_clock_s) * progress
         );
       }
       if (
-        typeof current.shot_clock_s === "number" &&
-        current.shot_clock_s >= next.shot_clock_s &&
+        typeof prevState.shot_clock_s === "number" &&
+        prevState.shot_clock_s >= targetState.shot_clock_s &&
         shotClockNodeRef.current
       ) {
         shotClockNodeRef.current.textContent = `${fmt(
-          current.shot_clock_s +
-            (next.shot_clock_s - current.shot_clock_s) * progress,
+          prevState.shot_clock_s +
+            (targetState.shot_clock_s - prevState.shot_clock_s) * progress,
           1
         )}s`;
       }
     };
 
     const tick = (now: number) => {
-      const elapsed = Math.max(0, now - anchorTime);
-      const nextIndex = Math.min(
-        game.frames.length - 1,
-        anchorFrame + Math.floor(elapsed / pace)
-      );
-      if (nextIndex === game.frames.length - 1) {
+      let elapsed = Math.max(0, now - frameStartTime);
+      while (elapsed >= currentFrameDur && activeIdx < game.frames.length - 1) {
+        elapsed -= currentFrameDur;
+        frameStartTime += currentFrameDur;
+        activeIdx += 1;
+        currentFrameDur = frameDurationMs(activeIdx);
+      }
+
+      if (activeIdx !== frameIndexRef.current) {
+        frameIndexRef.current = activeIdx;
+        setFrameIndex(activeIdx);
+      }
+
+      if (
+        activeIdx >= game.frames.length - 1 &&
+        elapsed >= currentFrameDur
+      ) {
         playbackFractionRef.current = 0;
-        setFrameIndex(nextIndex);
+        paintPlaybackCourt(activeIdx, 1);
+        setFrameIndex(activeIdx);
         setPlaying(false);
         playbackRafRef.current = null;
         return;
       }
-      if (nextIndex !== frameIndexRef.current) {
-        frameIndexRef.current = nextIndex;
-        setFrameIndex(nextIndex);
-      }
-      const frac = (elapsed / pace) % 1;
+
+      const frac = Math.min(1, elapsed / currentFrameDur);
       playbackFractionRef.current = frac;
-      if (!reducedMotion) {
-        paintPlaybackCourt(nextIndex, frac);
-      }
+      paintPlaybackCourt(activeIdx, reducedMotion ? 1 : frac);
       playbackRafRef.current = requestAnimationFrame(tick);
     };
 
@@ -554,6 +829,50 @@ export function ReplayView({
   );
   const actor = eventActor(game, f, frameIndex);
   const cues = eventCues(game, f, frameIndex);
+  const shotDesc = describeShotEvent(game, frameIndex);
+
+  const shotArcGeometry = useMemo(() => {
+    if (!shotDesc) return null;
+    if (shotDesc.kind === "score" || shotDesc.kind === "miss") {
+      const start = getShooterReleasePosition(
+        game,
+        frameIndex,
+        shotDesc.actor,
+        geom.xy,
+        geom.basket
+      );
+      const end = geom.basket;
+      const midX = (start[0] + end[0]) / 2;
+      const dist = Math.hypot(end[0] - start[0], end[1] - start[1]);
+      const midY =
+        (start[1] + end[1]) / 2 - Math.min(54, Math.max(22, dist * 0.25));
+      const d = `M ${start[0]} ${start[1]} Q ${midX} ${midY} ${end[0]} ${end[1]}`;
+      const looseEnd =
+        shotDesc.kind === "miss" && s.ball.status === "LOOSE"
+          ? getRestingBallPosition(game, frameIndex, geom.xy, geom.basket)
+          : null;
+      return { kind: shotDesc.kind, d, start, end, looseEnd };
+    }
+    if (shotDesc.kind === "rebound" || shotDesc.kind === "turnover") {
+      const start = getRestingBallPosition(
+        game,
+        Math.max(0, frameIndex - 1),
+        geom.xy,
+        geom.basket
+      );
+      const end = getRestingBallPosition(
+        game,
+        frameIndex,
+        geom.xy,
+        geom.basket
+      );
+      const midX = (start[0] + end[0]) / 2;
+      const midY = (start[1] + end[1]) / 2 - 20;
+      const d = `M ${start[0]} ${start[1]} Q ${midX} ${midY} ${end[0]} ${end[1]}`;
+      return { kind: shotDesc.kind, d, start, end, looseEnd: null };
+    }
+    return null;
+  }, [frameIndex, game, geom.basket, geom.xy, s.ball.status, shotDesc]);
 
   const lastIdx = game.frames.length - 1;
   const span = Math.min(timelineSpan, game.frames.length);
@@ -711,6 +1030,29 @@ export function ReplayView({
             </div>
 
             <div id="court" className="court-wrap">
+              {shotDesc ? (
+                <div
+                  id="shot-banner"
+                  key={`shot-banner-${f.event_idx}-${shotDesc.kind}`}
+                  className={`shot-banner ${shotDesc.kind}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="shot-banner-tag">
+                    {shotDesc.kind === "score"
+                      ? `+${shotDesc.points ?? 1} PTS`
+                      : shotDesc.kind === "miss"
+                      ? "MISSED SHOT"
+                      : shotDesc.kind === "turnover"
+                      ? "TURNOVER"
+                      : "REBOUND"}
+                  </span>
+                  <strong className="shot-banner-title">
+                    {shotDesc.message}
+                  </strong>
+                  <small className="shot-banner-sub">{shotDesc.subtext}</small>
+                </div>
+              ) : null}
               <div id="event-cue" className="event-cue" aria-live="off">
                 {cues.map((cue, idx) => (
                   <span
@@ -855,6 +1197,44 @@ export function ReplayView({
                       })
                     : null}
                 </g>
+
+                {shotArcGeometry ? (
+                  <g
+                    id="court-shot-fx"
+                    key={`shot-fx-${f.event_idx}-${shotArcGeometry.kind}`}
+                    pointerEvents="none"
+                  >
+                    <path
+                      className={`shot-arc-line ${shotArcGeometry.kind}`}
+                      d={shotArcGeometry.d}
+                      fill="none"
+                    />
+                    {shotArcGeometry.looseEnd ? (
+                      <path
+                        className="shot-arc-line miss-bounce"
+                        d={`M ${geom.basket[0]} ${geom.basket[1]} L ${shotArcGeometry.looseEnd[0]} ${shotArcGeometry.looseEnd[1]}`}
+                        fill="none"
+                      />
+                    ) : null}
+                    {shotArcGeometry.kind !== "turnover" ? (
+                      <circle
+                        className={`rim-fx-ring ${shotArcGeometry.kind}`}
+                        cx={geom.basket[0]}
+                        cy={geom.basket[1]}
+                        r="16"
+                        fill="none"
+                      />
+                    ) : (
+                      <circle
+                        className="rim-fx-ring turnover"
+                        cx={shotArcGeometry.start[0]}
+                        cy={shotArcGeometry.start[1]}
+                        r="14"
+                        fill="none"
+                      />
+                    )}
+                  </g>
+                ) : null}
 
                 {playersSorted.map((p) => {
                   const color = isOrangeTeam(p.team) ? "#efb087" : "#d1eea5";
@@ -1368,15 +1748,25 @@ export function ReplayView({
                     Team {e.team} +{e.points} · {title(e.source)}
                   </div>
                 ))}
-                {(f.resolution?.turnovers || []).map((e, idx) => (
-                  <div
-                    key={idx}
-                    className="callout warning"
-                    style={{ marginTop: "12px" }}
-                  >
-                    Turnover · {e.player || e.team} · {title(e.reason)}
-                  </div>
-                ))}
+                {(f.resolution?.turnovers || []).map((e, idx) => {
+                  const detail = formatTurnoverDetail(
+                    f,
+                    frameIndex > 0 ? game.frames[frameIndex - 1] : undefined
+                  );
+                  return (
+                    <div
+                      key={idx}
+                      className="callout warning"
+                      style={{ marginTop: "12px" }}
+                    >
+                      {detail
+                        ? detail.message
+                        : `Turnover · ${e.player || e.team} · ${title(
+                            e.reason
+                          )}`}
+                    </div>
+                  );
+                })}
                 <details className="raw-detail">
                   <summary>Recorded resolution</summary>
                   <pre>{JSON.stringify(f.resolution || {}, null, 2)}</pre>

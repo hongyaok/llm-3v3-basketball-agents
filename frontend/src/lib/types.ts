@@ -272,6 +272,15 @@ export interface ReplayPossessionEnd {
   end_event_idx: number;
 }
 
+export interface ReplayShot {
+  team: TeamId;
+  shooter: string;
+  made: boolean;
+  assist_by?: string | null;
+  screen_id?: string | null;
+  [key: string]: unknown;
+}
+
 export interface ReplayResolution {
   record_type: "resolution";
   event_idx: number;
@@ -285,7 +294,7 @@ export interface ReplayResolution {
   possession_after?: { possession_id: string; team: TeamId } | null;
   scoring_events?: Array<{ team: TeamId; points: number; source: string; [key: string]: unknown }>;
   possession_changes?: Array<Record<string, unknown>>;
-  shots?: unknown;
+  shots?: ReplayShot[] | null;
   screens?: unknown;
   turnovers?: Array<{ team: TeamId; player?: string; reason: string; [key: string]: unknown }>;
   game_over?: boolean;

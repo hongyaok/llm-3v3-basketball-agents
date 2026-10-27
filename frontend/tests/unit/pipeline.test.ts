@@ -15,6 +15,13 @@ import {
   validateSafeEntryPath,
 } from "../../scripts/lib/zip";
 import { fmt, sign, clock, title } from "../../src/lib/format";
+import {
+  describeShotEvent,
+  eventActor,
+  eventCues,
+  eventTitle,
+} from "../../src/lib/replay-logic";
+import type { GameReplay } from "../../src/lib/types";
 
 function makeFixtureExperiment() {
   const games = [
@@ -388,6 +395,198 @@ describe("pipeline unit tests (ported from test_dashboard.py)", () => {
     expect(clock(600)).toBe("10:00");
     expect(clock(65)).toBe("1:05");
     expect(title("WIN_SCORE")).toBe("Win score");
+  });
+
+  it("describes made shots, missed shots, and rebounds for replay animation", () => {
+    const mockReplay: GameReplay = {
+      id: "test-game",
+      seed: 101,
+      conditions: { A: "A_full", B: "C_no_captain" },
+      coordination: {},
+      first_possession: "A",
+      court: { width_m: 15, depth_m: 11, cell_m: 1, basket: [7, 1] },
+      end: null,
+      warnings: [],
+      possessions: [],
+      frames: [
+        {
+          event_idx: 0,
+          state: {
+            event_idx: 0,
+            game_clock_s: 600,
+            shot_clock_s: 12,
+            score: { A: 0, B: 0 },
+            team_fouls: { A: 0, B: 0 },
+            offense: "A",
+            players: {
+              A1: { id: "A1", team: "A", pos: [7, 8], has_ball: true },
+              B1: { id: "B1", team: "B", pos: [7, 6] },
+            },
+            ball: { status: "HELD", pos: [7, 8], holder: "A1" },
+          },
+          decisions: [],
+          messages: [],
+          captain_calls: [],
+          possessions_ended: [],
+        },
+        {
+          event_idx: 1,
+          state: {
+            event_idx: 1,
+            game_clock_s: 598,
+            shot_clock_s: 12,
+            score: { A: 1, B: 0 },
+            team_fouls: { A: 0, B: 0 },
+            offense: "B",
+            players: {
+              A1: { id: "A1", team: "A", pos: [7, 5] },
+              B1: { id: "B1", team: "B", pos: [7, 9], has_ball: true },
+            },
+            ball: { status: "HELD", pos: [7, 9], holder: "B1" },
+          },
+          decisions: [],
+          messages: [],
+          captain_calls: [],
+          possessions_ended: [],
+          resolution: {
+            record_type: "resolution",
+            event_idx: 1,
+            actions: { A1: "SHOOT", B1: "CONTEST" },
+            shots: [{ team: "A", shooter: "A1", made: true }],
+            scoring_events: [{ team: "A", points: 1, source: "FIELD_GOAL" }],
+          },
+        },
+        {
+          event_idx: 2,
+          state: {
+            event_idx: 2,
+            game_clock_s: 595,
+            shot_clock_s: 9,
+            score: { A: 1, B: 0 },
+            team_fouls: { A: 0, B: 0 },
+            offense: "B",
+            players: {
+              A1: { id: "A1", team: "A", pos: [7, 4] },
+              B1: { id: "B1", team: "B", pos: [11, 7] },
+            },
+            ball: { status: "LOOSE", pos: [11, 7], holder: null },
+          },
+          decisions: [],
+          messages: [],
+          captain_calls: [],
+          possessions_ended: [],
+          resolution: {
+            record_type: "resolution",
+            event_idx: 2,
+            actions: { A1: "CONTEST", B1: "SHOOT" },
+            shots: [{ team: "B", shooter: "B1", made: false }],
+            scoring_events: [],
+          },
+        },
+        {
+          event_idx: 3,
+          state: {
+            event_idx: 3,
+            game_clock_s: 594,
+            shot_clock_s: 12,
+            score: { A: 1, B: 0 },
+            team_fouls: { A: 0, B: 0 },
+            offense: "A",
+            players: {
+              A1: { id: "A1", team: "A", pos: [6, 3], has_ball: true },
+              B1: { id: "B1", team: "B", pos: [9, 5] },
+            },
+            ball: { status: "HELD", pos: [6, 3], holder: "A1" },
+          },
+          decisions: [],
+          messages: [],
+          captain_calls: [],
+          possessions_ended: [],
+          resolution: {
+            record_type: "resolution",
+            event_idx: 3,
+            actions: { A1: "BOX_OUT", B1: "BOX_OUT" },
+            scoring_events: [],
+          },
+        },
+      ],
+    };
+
+    const scoreDesc = describeShotEvent(mockReplay, 1);
+    expect(scoreDesc?.kind).toBe("score");
+    expect(scoreDesc?.message).toBe("A1 scored 1 point");
+    expect(eventActor(mockReplay, mockReplay.frames[1], 1)).toBe("A1");
+    expect(eventCues(mockReplay, mockReplay.frames[1], 1)[0]).toEqual({
+      kind: "score",
+      text: "A1 scored 1 point",
+    });
+    expect(eventTitle(mockReplay.frames[1], mockReplay.frames, 1)).toBe(
+      "A1 scored 1 point"
+    );
+
+    const missDesc = describeShotEvent(mockReplay, 2);
+    expect(missDesc?.kind).toBe("miss");
+    expect(missDesc?.message).toBe("B1 Missed");
+    expect(missDesc?.nextRebounder).toBe("A1");
+    expect(eventActor(mockReplay, mockReplay.frames[2], 2)).toBe("B1");
+    expect(eventCues(mockReplay, mockReplay.frames[2], 2)[0]).toEqual({
+      kind: "miss",
+      text: "B1 Missed",
+    });
+    expect(eventTitle(mockReplay.frames[2], mockReplay.frames, 2)).toBe(
+      "B1 Missed"
+    );
+
+    const rebDesc = describeShotEvent(mockReplay, 3);
+    expect(rebDesc?.kind).toBe("rebound");
+    expect(rebDesc?.message).toBe("A1 Rebound");
+    expect(rebDesc?.isOffensiveRebound).toBe(false);
+    expect(eventActor(mockReplay, mockReplay.frames[3], 3)).toBe("A1");
+    expect(eventCues(mockReplay, mockReplay.frames[3], 3)[0]).toEqual({
+      kind: "rebound",
+      text: "A1 Rebound",
+    });
+    expect(eventTitle(mockReplay.frames[3], mockReplay.frames, 3)).toBe(
+      "A1 Rebound"
+    );
+
+    mockReplay.frames.push({
+      event_idx: 4,
+      state: {
+        event_idx: 4,
+        game_clock_s: 590,
+        shot_clock_s: 12,
+        score: { A: 1, B: 0 },
+        team_fouls: { A: 0, B: 0 },
+        offense: "A",
+        players: {
+          A1: { id: "A1", team: "A", pos: [6, 5], has_ball: true },
+          B1: { id: "B1", team: "B", pos: [6, 5] },
+        },
+        ball: { status: "HELD", pos: [6, 5], holder: "A1" },
+      },
+      decisions: [],
+      messages: [],
+      captain_calls: [],
+      possessions_ended: [],
+      resolution: {
+        record_type: "resolution",
+        event_idx: 4,
+        actions: { A1: "DEFEND", B1: "PASS" },
+        turnovers: [{ team: "B", player: "B1", reason: "STEAL" }],
+      },
+    });
+
+    const tovDesc = describeShotEvent(mockReplay, 4);
+    expect(tovDesc?.kind).toBe("turnover");
+    expect(tovDesc?.message).toBe("Turnover: A1 stole ball from B1");
+    expect(eventCues(mockReplay, mockReplay.frames[4], 4)[0]).toEqual({
+      kind: "turnover",
+      text: "Turnover: A1 stole ball from B1",
+    });
+    expect(eventTitle(mockReplay.frames[4], mockReplay.frames, 4)).toBe(
+      "Turnover: A1 stole ball from B1"
+    );
   });
 });
 
