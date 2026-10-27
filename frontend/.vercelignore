@@ -1,0 +1,10 @@
+node_modules/
+.next/
+out/
+public/data/
+.vercel/
+.data-cache/
+test-results/
+playwright-report/
+tests/
+

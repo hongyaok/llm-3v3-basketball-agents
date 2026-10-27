@@ -1,0 +1,13 @@
+{
+  "run": "fake_gate_seed101",
+  "events": 130,
+  "refs": 130,
+  "score": {
+    "A": 21,
+    "B": 15
+  },
+  "end_reason": "WIN_SCORE",
+  "configs_clean": true,
+  "live": false,
+  "note": "offline FakeLLM+RuleBased proof; live LLM referee pending OPENROUTER key in shell + rag extras"
+}

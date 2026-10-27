@@ -1,0 +1,34 @@
+{
+  "name": "courtside-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "npm run data && next dev",
+    "data": "tsx scripts/build-data.ts",
+    "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && npm run data",
+    "build": "next build",
+    "start": "next start",
+    "sync-results": "tsx scripts/sync-results.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "csv-parse": "^5.6.0",
+    "fflate": "^0.8.2",
+    "next": "^15.1.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
+

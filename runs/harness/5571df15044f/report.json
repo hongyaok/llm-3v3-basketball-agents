@@ -1,0 +1,614 @@
+{
+  "prompt_hash": "5571df15044fe74ec33f3cb4181bbdf28704acc15eefab014e6d4d790094c459",
+  "model": "FakeLLM(LegalXMLPolicy)",
+  "scenarios_count": 20,
+  "samples_per_scenario": 1,
+  "total_runs": 20,
+  "parse_ok_before_repair_rate": 1.0,
+  "parse_ok_after_repair_rate": 1.0,
+  "parse_failure_rate": 0.0,
+  "repair_rate": 0.0,
+  "iar_rate": 0.0,
+  "iar_by_reason": {},
+  "directive_emission_rate": 0.9,
+  "directive_follow_rate": 0.75,
+  "memory_ref_usage_rate": 0.75,
+  "cs_usage_rate": 0.0,
+  "mean_prompt_tokens": 0,
+  "mean_completion_tokens": 0,
+  "total_cost_usd": 0.0,
+  "latency_p50_ms": 0.0,
+  "latency_p95_ms": 0.0,
+  "scenarios": [
+    {
+      "id": "01_open_shot_ball_handler",
+      "description": "Ball handler A1 wide open at top of arc",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "02_needs_clear_ball_handler",
+      "description": "Ball handler A1 inside arc with needs_clear=True",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CLEAR",
+          "proposed_target": null,
+          "executed_action": "CLEAR",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "03_shot_clock_low",
+      "description": "Ball handler A2 with 2s on shot clock",
+      "player_id": "A2",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "04_off_ball_cut_opportunity",
+      "description": "Off-ball A2 with open lane to basket",
+      "player_id": "A2",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CUT",
+          "proposed_target": "PAINT",
+          "executed_action": "CUT",
+          "executed_target": "PAINT",
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "05_off_ball_captain_screen_directive",
+      "description": "Off-ball A3 receives captain directive to SCREEN B1",
+      "player_id": "A3",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SCREEN",
+          "proposed_target": "B1",
+          "executed_action": "SCREEN",
+          "executed_target": "B1",
+          "invalid_reason": null,
+          "memory_ref": null,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "06_ball_handler_pass_directive",
+      "description": "Ball handler A1 receives teammate directive to PASS to A2",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "PASS",
+          "proposed_target": "A2",
+          "executed_action": "PASS",
+          "executed_target": "A2",
+          "invalid_reason": null,
+          "memory_ref": null,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "07_on_ball_defender_drive",
+      "description": "Defender B1 guarding ball handler A1 at nail",
+      "player_id": "B1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CONTEST",
+          "proposed_target": "A1",
+          "executed_action": "CONTEST",
+          "executed_target": "A1",
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "08_off_ball_defender_help_paint",
+      "description": "Off-ball defender B3 rotating to help paint",
+      "player_id": "B3",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CONTEST",
+          "proposed_target": "A1",
+          "executed_action": "CONTEST",
+          "executed_target": "A1",
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "09_rebound_offense",
+      "description": "Offensive player A3 during loose-ball rebound",
+      "player_id": "A3",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CRASH_BOARDS",
+          "proposed_target": null,
+          "executed_action": "CRASH_BOARDS",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": null,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "10_rebound_defense",
+      "description": "Defensive player B3 during loose-ball rebound",
+      "player_id": "B3",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CRASH_BOARDS",
+          "proposed_target": null,
+          "executed_action": "CRASH_BOARDS",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": null,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "11_captain_no_prior_call",
+      "description": "Captain A1 initiating half-court set with no prior call",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "12_team_b_non_captain_with_call",
+      "description": "Team B (comms=False) non-captain A2 with captain call",
+      "player_id": "A2",
+      "is_captain": false,
+      "flags": {
+        "comms": false,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SPOT_UP",
+          "proposed_target": "LEFT_CORNER",
+          "executed_action": "SPOT_UP",
+          "executed_target": "LEFT_CORNER",
+          "invalid_reason": null,
+          "memory_ref": null,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "13_team_b_captain",
+      "description": "Team B (comms=False) captain A1 on offense",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": false,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "14_team_c_ball_handler",
+      "description": "Team C (comms only) ball handler A1",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "15_team_d_isolated_player",
+      "description": "Team D (no coordination) off-ball player A2",
+      "player_id": "A2",
+      "is_captain": false,
+      "flags": {
+        "comms": false,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CUT",
+          "proposed_target": "PAINT",
+          "executed_action": "CUT",
+          "executed_target": "PAINT",
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "16_exploitable_memory_tendency",
+      "description": "A1 sees B1 sagging in paint matching memory M01",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "17_defense_cs_switch",
+      "description": "Defender B2 facing high screen matching CS 02",
+      "player_id": "B2",
+      "is_captain": false,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CONTEST",
+          "proposed_target": "A1",
+          "executed_action": "CONTEST",
+          "executed_target": "A1",
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "18_overtime_tied",
+      "description": "Overtime tied 14-14, sudden-death / +2 target",
+      "player_id": "A1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "19_team_b_offense_initiation",
+      "description": "Team B ball handler B1 at check spot",
+      "player_id": "B1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "SHOOT",
+          "proposed_target": null,
+          "executed_action": "SHOOT",
+          "executed_target": null,
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "20_defender_steal_directive",
+      "description": "On-ball defender B1 adjacent to A1 with STEAL directive",
+      "player_id": "B1",
+      "is_captain": true,
+      "flags": {
+        "comms": true,
+        "captain": true,
+        "memory_write": true
+      },
+      "samples": [
+        {
+          "sample": 1,
+          "parse_ok": true,
+          "repaired": false,
+          "proposed_action": "CONTEST",
+          "proposed_target": "A1",
+          "executed_action": "CONTEST",
+          "executed_target": "A1",
+          "invalid_reason": null,
+          "memory_ref": [
+            "M01"
+          ],
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "latency_ms": 0.0,
+          "finish_reason": null
+        }
+      ]
+    }
+  ]
+}

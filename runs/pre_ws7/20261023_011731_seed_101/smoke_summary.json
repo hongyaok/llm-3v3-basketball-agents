@@ -1,0 +1,11 @@
+{
+  "events": 5,
+  "score": {
+    "A": 0,
+    "B": 0
+  },
+  "complete": false,
+  "refs": 5,
+  "player_model": "minimax/minimax-m3.1-flash",
+  "ref_model": "openai/gpt-oss-120b"
+}

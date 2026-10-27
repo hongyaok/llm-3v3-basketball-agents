@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LLM 3×3 Basketball — System Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#000000;
+    --ink:#ffffff;
+    --body:#d4d4d8;
+    --muted:#a1a1aa;
+    --dim:#71717a;
+    --faint:#3f3f46;
+    --line:#18181b;
+    --pm-accent:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);}
+  body{
+    color:var(--body);
+    font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:#fff;color:#000;}
+
+  header{
+    max-width:1420px;
+    margin:0 auto;
+    padding:14px 24px 12px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .view-tag{
+    font-size:8.5px;
+    letter-spacing:.16em;
+    color:var(--dim);
+    text-transform:uppercase;
+  }
+  .controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+  .ctrl-btn{
+    background:#000;
+    color:#d4d4d8;
+    border:1px solid var(--faint);
+    padding:6px 10px;
+    font-family:inherit;
+    font-size:9px;
+    letter-spacing:.04em;
+    border-radius:2px;
+    cursor:pointer;
+    user-select:none;
+    transition:border-color .15s ease,color .15s ease,background .15s ease;
+  }
+  .ctrl-btn:hover{border-color:#fff;color:#fff;background:#0b0b0c;}
+  .ctrl-btn.active{background:#fff;color:#000;border-color:#fff;font-weight:600;}
+  .sep{color:#27272a;padding:0 3px;user-select:none;}
+
+  main{max-width:1420px;margin:0 auto;padding:14px 24px 4px;}
+  .canvas-wrap{
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:8px;
+    background:#000;
+    overflow-x:auto;
+  }
+  svg#arch{
+    display:block;
+    width:100%;
+    min-width:980px;
+    height:auto;
+  }
+  footer{
+    max-width:1420px;
+    margin:0 auto;
+    padding:12px 24px 20px;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    gap:10px;
+    font-size:8.5px;
+    letter-spacing:.03em;
+    color:#52525b;
+  }
+  footer a{color:#71717a;text-decoration:none;border-bottom:1px solid #27272a;}
+  footer a:hover{color:#fff;border-color:#fff;}
+
+
+  body.modal-open{overflow:hidden;}
+
+  /* ---------- player detail ---------- */
+  .player-modal{
+    position:fixed;
+    inset:0;
+    z-index:60;
+    background:rgba(0,0,0,.82);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  .player-modal[hidden]{display:none;}
+  .player-card{
+    width:min(1060px,100%);
+    max-height:90vh;
+    overflow-y:auto;
+    background:#000;
+    border:1px solid #27272a;
+    border-radius:2px;
+    padding:18px 20px 16px;
+    box-shadow:0 0 0 1px #000,0 28px 70px rgba(0,0,0,.65);
+  }
+  .player-card::-webkit-scrollbar{width:8px;}
+  .player-card::-webkit-scrollbar-track{background:#000;}
+  .player-card::-webkit-scrollbar-thumb{background:#27272a;}
+
+  .pm-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:16px;
+    border-bottom:1px solid #18181b;
+    padding-bottom:12px;
+  }
+  .pm-eyebrow{
+    font-size:8px;
+    letter-spacing:.14em;
+    color:#71717a;
+    text-transform:uppercase;
+  }
+  .pm-title{
+    margin:5px 0 3px;
+    font-size:16px;
+    font-weight:700;
+    letter-spacing:.04em;
+    color:#fff;
+  }
+  .pm-edited{
+    display:inline-block;
+    margin-left:9px;
+    padding:2px 5px;
+    border:1px solid #3f3f46;
+    font-size:7px;
+    font-weight:500;
+    letter-spacing:.1em;
+    color:#a1a1aa;
+    vertical-align:middle;
+  }
+  .pm-edited[hidden]{display:none;}
+  .pm-sub{
+    margin:0;
+    font-size:9px;
+    letter-spacing:.06em;
+    color:#a1a1aa;
+  }
+
+  .pm-flow{
+    display:grid;
+    grid-template-columns:1fr 16px 1fr 16px 1fr 16px 1fr 16px 1fr;
+    margin:14px 0 0;
+  }
+  .pm-step{
+    border:1px solid #27272a;
+    background:#000;
+    padding:9px 10px 10px;
+    min-height:126px;
+  }
+  .pm-step-no{
+    font-size:7px;
+    letter-spacing:.14em;
+    color:#52525b;
+  }
+  .pm-step-title{
+    margin-top:5px;
+    font-size:10.5px;
+    font-weight:600;
+    letter-spacing:.04em;
+    color:#fff;
+  }
+  .pm-step-desc{
+    margin-top:5px;
+    font-size:8.4px;
+    line-height:1.55;
+    color:#a1a1aa;
+  }
+  .pm-arrow{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:#3f3f46;
+    font-size:10px;
+  }
+  .pm-flow-note{
+    margin:8px 0 0;
+    font-size:8px;
+    line-height:1.5;
+    color:#52525b;
+  }
+
+
+  .pm-map{
+    display:block;
+    width:100%;
+    height:auto;
+    margin-top:4px;
+  }
+  .pm-map text{font-family:inherit;}
+  .pm-map .mb{fill:#000;stroke:#27272a;stroke-width:1px;}
+  .pm-map .mb.step{stroke:var(--pm-accent);}
+  .pm-map .mb.out{stroke:#3f3f46;stroke-dasharray:3 3;}
+  .pm-map .mt{fill:#fff;font-size:9.5px;font-weight:600;}
+  .pm-map .ms{fill:#a1a1aa;font-size:7.4px;}
+  .pm-map .mn{fill:#52525b;font-size:6.8px;letter-spacing:.1em;}
+  .pm-map .me{fill:none;stroke:#3f3f46;stroke-width:1.1px;}
+  .pm-map .me.main{stroke:var(--pm-accent);}
+  .pm-map .mh{fill:var(--pm-accent);}
+
+  .pm-examples{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-top:2px;
+  }
+  .pm-ex{
+    min-width:0;
+    border:1px solid #18181b;
+    padding:7px 8px 8px;
+  }
+  .pm-ex-title{
+    margin-bottom:5px;
+    font-size:7.5px;
+    letter-spacing:.1em;
+    color:#71717a;
+    text-transform:uppercase;
+  }
+  .pm-ex pre{
+    margin:0;
+    font-family:inherit;
+    font-size:7px;
+    line-height:1.45;
+    color:#a1a1aa;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+
+  .pm-body{
+    display:grid;
+    grid-template-columns:1.25fr .95fr;
+    gap:22px;
+    margin-top:14px;
+    border-top:1px solid #18181b;
+    padding-top:14px;
+  }
+  .pm-section-title{
+    margin-bottom:9px;
+    font-size:8px;
+    letter-spacing:.14em;
+    color:#71717a;
+    text-transform:uppercase;
+  }
+  .pm-section-title span{
+    margin-left:8px;
+    font-size:7.5px;
+    letter-spacing:.02em;
+    color:#3f3f46;
+    text-transform:none;
+  }
+  .pm-attr-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px 20px;
+  }
+  .pm-attr{
+    display:grid;
+    grid-template-columns:82px 1fr 26px;
+    align-items:center;
+    gap:8px;
+    font-size:8px;
+    letter-spacing:.05em;
+    color:#a1a1aa;
+  }
+  .pm-attr input[type="range"]{
+    width:100%;
+    height:14px;
+    margin:0;
+    accent-color:var(--pm-accent);
+    cursor:pointer;
+    background:transparent;
+  }
+  .pm-attr b{
+    padding:2px 0;
+    border:1px solid #27272a;
+    border-radius:1px;
+    font-size:9px;
+    font-weight:500;
+    color:#fff;
+    text-align:center;
+  }
+
+  .pm-profile label{
+    display:block;
+    margin-bottom:8px;
+    font-size:7.5px;
+    letter-spacing:.1em;
+    color:#71717a;
+  }
+  .pm-profile input[type="text"]{
+    display:block;
+    width:100%;
+    margin-top:4px;
+    padding:6px 8px;
+    background:#000;
+    border:1px solid #3f3f46;
+    border-radius:1px;
+    color:#e4e4e7;
+    font-family:inherit;
+    font-size:9.5px;
+  }
+  .pm-profile input[type="text"]:focus{
+    outline:none;
+    border-color:#fff;
+  }
+  .pm-meta{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:7px 16px;
+    margin-top:10px;
+  }
+  .pm-meta div{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:8px;
+    border-bottom:1px solid #18181b;
+    padding-bottom:4px;
+    font-size:7.5px;
+    letter-spacing:.05em;
+    color:#71717a;
+  }
+  .pm-meta b{
+    font-size:8px;
+    font-weight:500;
+    color:#d4d4d8;
+    text-align:right;
+  }
+  .pm-meta .pm-wide{grid-column:1 / -1;}
+  .pm-meta .pm-wide b{font-size:7.8px;}
+  #pmModel{font-size:8px;word-break:break-all;}
+  .pm-note{
+    margin:10px 0 0;
+    font-size:7.8px;
+    line-height:1.55;
+    color:#52525b;
+  }
+
+  .pm-foot{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-top:14px;
+    border-top:1px solid #18181b;
+    padding-top:12px;
+  }
+  .pm-save{font-size:7.5px;color:#52525b;}
+  .pm-actions{display:flex;flex-wrap:wrap;gap:6px;}
+
+  @media (max-width:900px){
+    .pm-flow{grid-template-columns:1fr;}
+    .pm-examples{grid-template-columns:1fr 1fr;}
+    .pm-arrow{display:none;}
+    .pm-step{min-height:0;}
+    .pm-body{grid-template-columns:1fr;}
+    .pm-attr-grid{grid-template-columns:1fr;}
+  }
+
+  @media (max-width:760px){
+    header,main,footer{padding-left:14px;padding-right:14px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="view-tag">Presentation view · click a player or panel · step through</div>
+  <div class="controls">
+    <button class="ctrl-btn active" data-theme="mono" onclick="setTheme('mono')">Monochrome</button>
+    <button class="ctrl-btn" data-theme="technical" onclick="setTheme('technical')">Cyan / Amber</button>
+    <button class="ctrl-btn" data-theme="phosphor" onclick="setTheme('phosphor')">Terminal Green</button>
+    <span class="sep">|</span>
+    <button class="ctrl-btn" onclick="stepForward()">Next stage</button>
+    <button class="ctrl-btn" onclick="resetAll()">Reset</button>
+    <span class="sep">|</span>
+    <button class="ctrl-btn" onclick="exportSVG()">Export SVG</button>
+    <button class="ctrl-btn" onclick="exportPNG()">Export PNG</button>
+  </div>
+</header>
+
+<main>
+  <div class="canvas-wrap">
+    <svg id="arch" class="theme-mono" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="arch-title arch-desc">
+      <title id="arch-title">LLM 3v3 basketball system architecture</title>
+      <desc id="arch-desc">A game runner feeds six LLM players, three per team. Their proposals go to a single-threaded simulation engine, with a rule-grounded referee drawing on the FIBA 3x3 rulebook. The engine commits state to a JSONL log that analysis and replay consume. Messages, captain calls and memory writes become visible at the next event.</desc>
+
+      <style>
+        #arch{
+          --ink:#ffffff;
+          --muted:#a1a1aa;
+          --dim:#71717a;
+          --line:#27272a;
+          --agent:#ffffff;
+          --engine:#ffffff;
+          --ref:#ffffff;
+          --mem:#ffffff;
+          --obs:#a1a1aa;
+          --edge:#ffffff;
+          --edge-muted:#71717a;
+          --active-fill:#18181b;
+          --active-stroke:#ffffff;
+          background:#000000;
+        }
+        #arch.theme-technical{
+          --agent:#38bdf8;
+          --engine:#fbbf24;
+          --ref:#a78bfa;
+          --mem:#34d399;
+          --obs:#94a3b8;
+          --edge:#e4e4e7;
+          --edge-muted:#64748b;
+          --active-fill:#0c2536;
+          --active-stroke:#7dd3fc;
+        }
+        #arch.theme-phosphor{
+          --agent:#4ade80;
+          --engine:#22c55e;
+          --ref:#86efac;
+          --mem:#2dd4bf;
+          --obs:#4ade80;
+          --edge:#4ade80;
+          --edge-muted:#166534;
+          --active-fill:#052e16;
+          --active-stroke:#86efac;
+        }
+        #arch text{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+        #arch .box{fill:#000000;stroke-width:1.4px;}
+        #arch .box.agent{stroke:var(--agent);}
+        #arch .box.captain{stroke-width:2.4px;fill:#0b0b0c;}
+        #arch .box.engine{stroke:var(--engine);}
+        #arch .box.ref{stroke:var(--ref);}
+        #arch .box.mem{stroke:var(--mem);}
+        #arch .box.obs{stroke:var(--obs);}
+        #arch .box.obs-dash{stroke:var(--obs);stroke-dasharray:4 3;}
+        #arch .box.runner{stroke:var(--muted);}
+        #arch .box.caption{stroke:var(--line);stroke-width:1px;fill:#000000;}
+        #arch .box.panel{stroke-width:1.1px;}
+        #arch .box.team{stroke:var(--line);stroke-width:1px;}
+        #arch .box.pill{stroke-width:1.1px;}
+        #arch .t{fill:var(--ink);font-size:12px;font-weight:600;}
+        #arch .ts{fill:var(--muted);font-size:8.8px;font-weight:400;}
+        #arch .tiny{fill:var(--dim);font-size:8px;font-weight:400;}
+        #arch .hdr{fill:var(--ink);font-size:13px;font-weight:700;letter-spacing:.04em;}
+        #arch .title{fill:var(--ink);font-size:21px;font-weight:700;letter-spacing:.03em;}
+        #arch .subtitle{fill:var(--muted);font-size:10px;font-weight:400;}
+        #arch .edge{fill:none;stroke:var(--edge);stroke-width:1.5px;}
+        #arch .edge.dashed{stroke:var(--edge-muted);stroke-dasharray:5 5;stroke-width:1.2px;}
+        #arch .edge.small{stroke-width:1.1px;}
+        #arch .edge.coord{stroke:var(--edge-muted);stroke-dasharray:4 4;stroke-width:1px;}
+        #arch .mesh .edge{stroke:var(--muted);}
+        #arch .head{fill:var(--edge);}
+        #arch .head-muted{fill:var(--edge-muted);}
+        #arch .mesh{pointer-events:none;}
+        #arch .node{cursor:pointer;}
+        #arch .node:hover .box{stroke-width:2.3px;}
+        #arch .node.active .box{fill:var(--active-fill);stroke-width:2.6px;}
+        #arch .edge.active{
+          stroke:var(--active-stroke);
+          stroke-width:2.1px;
+          stroke-dasharray:6 6;
+          animation:dashFlow .6s linear infinite;
+        }
+        #arch .box,#arch .edge,#arch text{transition:stroke .2s ease,fill .2s ease,opacity .2s ease;}
+        @keyframes dashFlow{to{stroke-dashoffset:-24;}}
+      </style>
+
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <polygon class="head" points="0,1.5 10,5 0,8.5"/>
+        </marker>
+        <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+          <polygon class="head-muted" points="0,1.5 10,5 0,8.5"/>
+        </marker>
+        <marker id="arrow-sm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+          <polygon class="head" points="0,1.5 10,5 0,8.5"/>
+        </marker>
+        <marker id="arrow-sm-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <polygon class="head-muted" points="0,1.5 10,5 0,8.5"/>
+        </marker>
+      </defs>
+
+      <rect x="0" y="0" width="1280" height="720" fill="#000000"/>
+
+      <!-- title -->
+      <g id="slide-title">
+        <text class="title" x="50" y="44">LLM 3×3 BASKETBALL</text>
+        <text class="subtitle" x="50" y="62">System architecture · one decision event per tick</text>
+        <text class="tiny" x="1230" y="44" text-anchor="end">DSA4213 · GROUP 16</text>
+        <text class="tiny" x="1230" y="60" text-anchor="end">6 players · 1 engine · 1 referee</text>
+      </g>
+
+      <!-- edges -->
+      <g id="edges">
+        <line id="e-run" class="edge" x1="240" y1="128" x2="240" y2="150" marker-end="url(#arrow)"/>
+        <line id="e-proposals" class="edge" x1="430" y1="330" x2="500" y2="330" marker-end="url(#arrow)"/>
+        <line id="e-ref" class="edge" x1="655" y1="210" x2="655" y2="250" marker-end="url(#arrow)"/>
+        <line id="e-rule" class="edge dashed" x1="790" y1="180" x2="760" y2="180" marker-end="url(#arrow-muted)"/>
+        <line id="e-engine-log" class="edge" x1="880" y1="290" x2="940" y2="290" marker-end="url(#arrow)"/>
+        <line id="e-log-analysis" class="edge" x1="1085" y1="330" x2="1085" y2="360" marker-end="url(#arrow)"/>
+        <path id="e-t1" class="edge dashed" d="M 822 365 V 604 H 240 V 580" marker-end="url(#arrow-muted)"/>      </g>
+
+      <!-- runner -->
+      <g class="node" data-info="runner">
+        <rect class="box runner" x="50" y="82" width="1180" height="46" rx="2"/>
+        <text class="t" x="66" y="105" style="font-size:12px">GAME RUNNER</text>
+        <text class="ts" x="66" y="120">asyncio · YAML-configured · one decision event at a time</text>
+        <text class="tiny" x="1214" y="112" text-anchor="end">1 tick = 1 decision event</text>
+      </g>
+
+      <!-- agents panel: each team is three connected players -->
+      <g class="node" data-info="1">
+        <rect class="box agent panel" x="50" y="150" width="380" height="430" rx="2"/>
+        <text class="hdr" x="68" y="180">AGENTS</text>
+        <text class="ts" x="68" y="195">6 × LLM players · 2 teams</text>
+
+        <rect class="box team" x="62" y="204" width="356" height="180" rx="2"/>
+        <text class="t" x="76" y="224" style="font-size:10px">TEAM A</text>
+        <text class="tiny" x="140" y="224">3 players · shared context</text>
+        <text class="tiny" x="240" y="330" text-anchor="middle">2-way comms</text>
+
+        <rect class="box team" x="62" y="390" width="356" height="180" rx="2"/>
+        <text class="t" x="76" y="410" style="font-size:10px">TEAM B</text>
+        <text class="tiny" x="140" y="410">3 players · shared context</text>
+        <text class="tiny" x="240" y="516" text-anchor="middle">2-way comms</text>
+      </g>
+
+      <!-- two-way team mesh (drawn above panel fill, below player nodes) -->
+        <g class="mesh">
+          <line class="edge coord" x1="202" y1="270" x2="161" y2="290" marker-start="url(#arrow-sm)" marker-end="url(#arrow-sm)"/>
+          <line class="edge coord" x1="278" y1="270" x2="319" y2="290" marker-start="url(#arrow-sm)" marker-end="url(#arrow-sm)"/>
+          <line class="edge coord" x1="178" y1="309" x2="302" y2="309" marker-start="url(#arrow-sm)" marker-end="url(#arrow-sm)"/>
+          <line class="edge coord" x1="202" y1="456" x2="161" y2="476" marker-start="url(#arrow-sm)" marker-end="url(#arrow-sm)"/>
+          <line class="edge coord" x1="278" y1="456" x2="319" y2="476" marker-start="url(#arrow-sm)" marker-end="url(#arrow-sm)"/>
+          <line class="edge coord" x1="178" y1="495" x2="302" y2="495" marker-start="url(#arrow-sm)" marker-end="url(#arrow-sm)"/>
+        </g>
+
+      <!-- six player nodes -->
+      <g class="node" data-info="2" data-player="A1">
+        <rect class="box agent captain" x="185" y="232" width="110" height="38" rx="2"/>
+        <text class="t" x="240" y="256" text-anchor="middle" style="font-size:9.5px">A1 · CAPTAIN</text>
+      </g>
+      <g class="node" data-info="2" data-player="A2">
+        <rect class="box agent" x="68" y="290" width="110" height="38" rx="2"/>
+        <text class="t" x="123" y="314" text-anchor="middle" style="font-size:10px">A2</text>
+      </g>
+      <g class="node" data-info="2" data-player="A3">
+        <rect class="box agent" x="302" y="290" width="110" height="38" rx="2"/>
+        <text class="t" x="357" y="314" text-anchor="middle" style="font-size:10px">A3</text>
+      </g>
+      <g class="node" data-info="2" data-player="B1">
+        <rect class="box agent captain" x="185" y="418" width="110" height="38" rx="2"/>
+        <text class="t" x="240" y="442" text-anchor="middle" style="font-size:9.5px">B1 · CAPTAIN</text>
+      </g>
+      <g class="node" data-info="2" data-player="B2">
+        <rect class="box agent" x="68" y="476" width="110" height="38" rx="2"/>
+        <text class="t" x="123" y="500" text-anchor="middle" style="font-size:10px">B2</text>
+      </g>
+      <g class="node" data-info="2" data-player="B3">
+        <rect class="box agent" x="302" y="476" width="110" height="38" rx="2"/>
+        <text class="t" x="357" y="500" text-anchor="middle" style="font-size:10px">B3</text>
+      </g>
+
+      <!-- team stores -->
+      <g class="node" data-info="6">
+        <rect class="box mem" x="68" y="342" width="164" height="34" rx="2"/>
+        <text class="t" x="150" y="357" text-anchor="middle" style="font-size:8.5px">TEAM MEMORY</text>
+        <text class="tiny" x="150" y="368" text-anchor="middle">shared · t+1</text>
+      </g>
+      <g class="node" data-info="6">
+        <rect class="box mem" x="244" y="342" width="168" height="34" rx="2"/>
+        <text class="t" x="328" y="357" text-anchor="middle" style="font-size:8.5px">CS TABLE</text>
+        <text class="tiny" x="328" y="368" text-anchor="middle">counter-strategy</text>
+      </g>
+      <g class="node" data-info="6">
+        <rect class="box mem" x="68" y="528" width="164" height="34" rx="2"/>
+        <text class="t" x="150" y="543" text-anchor="middle" style="font-size:8.5px">TEAM MEMORY</text>
+        <text class="tiny" x="150" y="554" text-anchor="middle">shared · t+1</text>
+      </g>
+      <g class="node" data-info="6">
+        <rect class="box mem" x="244" y="528" width="168" height="34" rx="2"/>
+        <text class="t" x="328" y="543" text-anchor="middle" style="font-size:8.5px">CS TABLE</text>
+        <text class="tiny" x="328" y="554" text-anchor="middle">counter-strategy</text>
+      </g>
+
+      <!-- proposals label -->
+      <text class="tiny" x="442" y="322">6 proposals</text>
+
+      <!-- engine -->
+      <g class="node" data-info="3">
+        <rect class="box engine panel" x="500" y="250" width="380" height="190" rx="2"/>
+        <text class="hdr" x="518" y="280">SIMULATION ENGINE</text>
+        <text class="ts" x="518" y="295">authoritative · single-threaded</text>
+        <text class="tiny" x="518" y="412">20 invariants checked before commit</text>
+      </g>
+
+      <g class="node" data-info="3">
+        <rect class="box engine pill" x="518" y="315" width="80" height="50" rx="2"/>
+        <text class="t" x="558" y="345" text-anchor="middle" style="font-size:9px">LEGALIZE</text>
+      </g>
+      <line class="edge small" x1="598" y1="340" x2="606" y2="340" marker-end="url(#arrow-sm)"/>
+      <g class="node" data-info="3">
+        <rect class="box engine pill" x="606" y="315" width="80" height="50" rx="2"/>
+        <text class="t" x="646" y="345" text-anchor="middle" style="font-size:9px">RESOLVE</text>
+      </g>
+      <line class="edge small" x1="686" y1="340" x2="694" y2="340" marker-end="url(#arrow-sm)"/>
+      <g class="node" data-info="3">
+        <rect class="box engine pill" x="694" y="315" width="80" height="50" rx="2"/>
+        <text class="t" x="734" y="345" text-anchor="middle" style="font-size:9px">APPLY RULES</text>
+      </g>
+      <line class="edge small" x1="774" y1="340" x2="782" y2="340" marker-end="url(#arrow-sm)"/>
+      <g class="node" data-info="3">
+        <rect class="box engine pill" x="782" y="315" width="80" height="50" rx="2"/>
+        <text class="t" x="822" y="345" text-anchor="middle" style="font-size:9px">COMMIT</text>
+      </g>
+
+      <!-- referee and rulebook -->
+      <g class="node" data-info="4">
+        <rect class="box ref" x="550" y="150" width="210" height="60" rx="2"/>
+        <text class="t" x="655" y="176" text-anchor="middle" style="font-size:12px">REFEREE AGENT</text>
+        <text class="ts" x="655" y="192" text-anchor="middle">one rule-grounded call per event</text>
+      </g>
+      <g class="node" data-info="4">
+        <rect class="box obs obs-dash" x="790" y="150" width="190" height="60" rx="2"/>
+        <text class="t" x="885" y="176" text-anchor="middle" style="font-size:10px">FIBA 3×3 RULEBOOK</text>
+        <text class="ts" x="885" y="192" text-anchor="middle">indexed · top-3 clauses</text>
+      </g>
+
+      <!-- log and analysis -->
+      <g class="node" data-info="5">
+        <rect class="box obs" x="940" y="250" width="290" height="80" rx="2"/>
+        <text class="t" x="958" y="276" style="font-size:12.5px">EVENT LOG</text>
+        <text class="ts" x="958" y="294">one JSONL per game</text>
+        <text class="tiny" x="958" y="308">decisions · referee · state</text>
+      </g>
+      <g class="node" data-info="5">
+        <rect class="box obs" x="940" y="360" width="290" height="80" rx="2"/>
+        <text class="t" x="958" y="386" style="font-size:11.5px">ANALYSIS + REPLAY</text>
+        <text class="ts" x="958" y="404">transcript · exports · stats</text>
+        <text class="tiny" x="958" y="418">read-only display</text>
+      </g>
+
+      <!-- t+1 label -->
+      <text class="tiny" x="252" y="596">t+1</text>
+      <text class="ts" x="280" y="596">messages · captain calls · memory/CS updates visible next event</text>
+
+      <!-- caption bar -->
+      <g id="caption">
+        <rect class="box caption" x="50" y="620" width="1180" height="58" rx="2"/>
+        <text class="tiny" id="cap-tag" x="66" y="638">OVERVIEW</text>
+        <text class="t" id="cap-title" x="66" y="653" style="font-size:10.5px">Six agents propose. One engine decides.</text>
+        <text class="ts" id="cap-desc" x="66" y="668" style="font-size:8.8px">Every event: six private observations, six parallel proposals, one authoritative resolution, one referee ruling, one committed state.</text>
+        <text class="tiny" id="cap-step" x="1214" y="638" text-anchor="end">—</text>
+      </g>
+
+      <text class="tiny" x="50" y="700">solid — in-tick flow     dashed — next-event visibility / external knowledge</text>
+    </svg>
+  </div>
+</main>
+
+<footer>
+  <span>Click a player for its architecture and attributes. Solid = in-tick; dashed = t+1 / external.</span>
+  <a href="system_architecture.html" target="_blank" rel="noopener">system architecture</a>
+</footer>
+
+<div class="player-modal" id="playerModal" hidden>
+  <div class="player-card" role="dialog" aria-modal="true" aria-labelledby="pmTitle">
+    <div class="pm-head">
+      <div>
+        <div class="pm-eyebrow" id="pmEyebrow">PROFILE P1 · SHARED BY A1 AND B1</div>
+        <div class="pm-title" id="pmTitle"><span id="pmTitleText">A1 · CAPTAIN</span><span class="pm-edited" id="pmEdited" hidden>EDITED</span></div>
+        <p class="pm-sub" id="pmSub">TEAM A · LLM PLAYER</p>
+      </div>
+      <button class="ctrl-btn" id="pmClose" onclick="closePlayer()">Close</button>
+    </div>
+
+    <div class="pm-section-title" style="margin-top:14px;">PLAYER ARCHITECTURE <span>one LLMPlayer · one path per decision event</span></div>
+    <svg class="pm-map" viewBox="0 0 1120 266" role="img" aria-label="Player decision architecture">
+      <defs>
+        <marker id="pmArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <polygon class="mh" points="0,1.5 10,5 0,8.5"/>
+        </marker>
+      </defs>
+
+      <!-- external inputs -->
+      <g>
+        <rect class="mb" x="11" y="2" width="176" height="40" rx="2"/>
+        <text class="mt" x="99" y="18" text-anchor="middle">GAME STATE</text>
+        <text class="ms" x="99" y="32" text-anchor="middle">authoritative</text>
+      </g>
+      <g>
+        <rect class="mb" x="197" y="2" width="176" height="40" rx="2"/>
+        <text class="mt" x="285" y="18" text-anchor="middle">TEAM CONTEXT</text>
+        <text class="ms" id="pmMapContext" x="285" y="32" text-anchor="middle">A2/A3 · B1/B2/B3</text>
+      </g>
+      <g>
+        <rect class="mb" x="383" y="2" width="176" height="40" rx="2"/>
+        <text class="mt" x="471" y="18" text-anchor="middle">PERSONAL MEMORY</text>
+        <text class="ms" x="471" y="32" text-anchor="middle">last 8 events</text>
+      </g>
+      <g>
+        <rect class="mb" x="569" y="2" width="176" height="40" rx="2"/>
+        <text class="mt" x="657" y="18" text-anchor="middle">TEAM MEMORY</text>
+        <text class="ms" x="657" y="32" text-anchor="middle">shared · t+1</text>
+      </g>
+      <g>
+        <rect class="mb" x="755" y="2" width="176" height="40" rx="2"/>
+        <text class="mt" x="843" y="18" text-anchor="middle">CS TABLE</text>
+        <text class="ms" x="843" y="32" text-anchor="middle">counter-strategy</text>
+      </g>
+      <g>
+        <rect class="mb" x="941" y="2" width="176" height="40" rx="2"/>
+        <text class="mt" x="1029" y="18" text-anchor="middle">COMMS + CAPTAIN</text>
+        <text class="ms" x="1029" y="32" text-anchor="middle">t-1/t-2 · call</text>
+      </g>
+
+      <!-- input bus -->
+      <path class="me" d="M 99 42 V 56 H 1029 V 42"/>
+      <line class="me" x1="285" y1="42" x2="285" y2="56"/>
+      <line class="me" x1="471" y1="42" x2="471" y2="56"/>
+      <line class="me" x1="657" y1="42" x2="657" y2="56"/>
+      <line class="me" x1="843" y1="42" x2="843" y2="56"/>
+      <line class="me main" x1="130" y1="56" x2="130" y2="76" marker-end="url(#pmArrow)"/>
+
+      <!-- decision path -->
+      <g>
+        <rect class="mb step" x="30" y="76" width="200" height="80" rx="2"/>
+        <text class="mn" x="40" y="88">01</text>
+        <text class="mt" x="130" y="100" text-anchor="middle">OBSERVE</text>
+        <text class="ms" x="130" y="114" text-anchor="middle">private view of state</text>
+        <text class="ms" x="130" y="124" text-anchor="middle">role · matchups · ball</text>
+        <text class="ms" x="130" y="134" text-anchor="middle">legal actions</text>
+      </g>
+      <line class="me main" x1="230" y1="116" x2="245" y2="116" marker-end="url(#pmArrow)"/>
+      <g>
+        <rect class="mb step" x="245" y="76" width="200" height="80" rx="2"/>
+        <text class="mn" x="255" y="88">02</text>
+        <text class="mt" x="345" y="100" text-anchor="middle">PROMPT</text>
+        <text class="ms" id="pmMapPrompt" x="345" y="114" text-anchor="middle">system + P1 profile</text>
+        <text class="ms" x="345" y="124" text-anchor="middle">captain addendum</text>
+        <text class="ms" x="345" y="134" text-anchor="middle">observation + instruction</text>
+      </g>
+      <line class="me main" x1="445" y1="116" x2="460" y2="116" marker-end="url(#pmArrow)"/>
+      <g>
+        <rect class="mb step" x="460" y="76" width="200" height="80" rx="2"/>
+        <text class="mn" x="470" y="88">03</text>
+        <text class="mt" x="560" y="100" text-anchor="middle">LLM CALL</text>
+        <text class="ms" x="560" y="114" text-anchor="middle">OpenRouter · T 0.7</text>
+        <text class="ms" x="560" y="124" text-anchor="middle">XML + rationale</text>
+      </g>
+      <line class="me main" x1="660" y1="116" x2="675" y2="116" marker-end="url(#pmArrow)"/>
+      <g>
+        <rect class="mb step" x="675" y="76" width="200" height="80" rx="2"/>
+        <text class="mn" x="685" y="88">04</text>
+        <text class="mt" x="775" y="100" text-anchor="middle">PARSE / REPAIR</text>
+        <text class="ms" x="775" y="114" text-anchor="middle">strict XML · 1 repair</text>
+        <text class="ms" x="775" y="124" text-anchor="middle">comms/captain flags</text>
+      </g>
+      <line class="me main" x1="875" y1="116" x2="890" y2="116" marker-end="url(#pmArrow)"/>
+      <g>
+        <rect class="mb step" x="890" y="76" width="200" height="80" rx="2"/>
+        <text class="mn" x="900" y="88">05</text>
+        <text class="mt" x="990" y="100" text-anchor="middle">PROPOSE</text>
+        <text class="ms" x="990" y="114" text-anchor="middle">action + target</text>
+        <text class="ms" x="990" y="124" text-anchor="middle">messages · captain call</text>
+        <text class="ms" x="990" y="134" text-anchor="middle">memory/CS proposal</text>
+      </g>
+
+      <!-- outputs -->
+      <path class="me main" d="M 990 156 V 176 H 155"/>
+      <line class="me main" x1="155" y1="176" x2="155" y2="190" marker-end="url(#pmArrow)"/>
+      <line class="me main" x1="425" y1="176" x2="425" y2="190" marker-end="url(#pmArrow)"/>
+      <line class="me main" x1="695" y1="176" x2="695" y2="190" marker-end="url(#pmArrow)"/>
+      <line class="me main" x1="965" y1="176" x2="965" y2="190" marker-end="url(#pmArrow)"/>
+
+      <g>
+        <rect class="mb out" x="30" y="190" width="250" height="52" rx="2"/>
+        <text class="mt" x="155" y="208" text-anchor="middle">ACTION PROPOSAL</text>
+        <text class="ms" x="155" y="224" text-anchor="middle">action + target</text>
+      </g>
+      <g>
+        <rect class="mb out" x="300" y="190" width="250" height="52" rx="2"/>
+        <text class="mt" x="425" y="208" text-anchor="middle">MESSAGES</text>
+        <text class="ms" x="425" y="224" text-anchor="middle">teammates · t+1</text>
+      </g>
+      <g>
+        <rect class="mb out" x="570" y="190" width="250" height="52" rx="2"/>
+        <text class="mt" x="695" y="208" text-anchor="middle">CAPTAIN CALL</text>
+        <text class="ms" x="695" y="224" text-anchor="middle">captain only · t+1</text>
+      </g>
+      <g>
+        <rect class="mb out" x="840" y="190" width="250" height="52" rx="2"/>
+        <text class="mt" x="965" y="208" text-anchor="middle">MEMORY / CS PROPOSAL</text>
+        <text class="ms" x="965" y="224" text-anchor="middle">validated · t+1</text>
+      </g>
+
+      <text class="ms" x="30" y="258">The proposal joins the other five; the engine legalizes and resolves all six. The player layer never mutates state.</text>
+    </svg>
+    <p class="pm-flow-note" id="pmFlowNote">Every player runs this path independently. The engine legalizes and resolves all six proposals and remains the only writer of state.</p>
+
+    <div class="pm-section-title" style="margin-top:12px;">CONTEXT EXAMPLES <span>sample values, not live game data</span></div>
+    <div class="pm-examples">
+      <div class="pm-ex">
+        <div class="pm-ex-title">Observation · Code 1</div>
+        <pre id="pmExObs"></pre>
+      </div>
+      <div class="pm-ex">
+        <div class="pm-ex-title">Personal + team memory</div>
+        <pre id="pmExMem"></pre>
+      </div>
+      <div class="pm-ex">
+        <div class="pm-ex-title">Counter-strategy table</div>
+        <pre id="pmExCs"></pre>
+      </div>
+      <div class="pm-ex">
+        <div class="pm-ex-title">Comms · captain · output</div>
+        <pre id="pmExComms"></pre>
+      </div>
+    </div>
+
+    <div class="pm-body">
+      <div>
+        <div class="pm-section-title">ATTRIBUTES <span>1–10 · editable · saved in this browser</span></div>
+        <div class="pm-attr-grid" id="pmAttrs"></div>
+      </div>
+      <div class="pm-profile">
+        <div class="pm-section-title">PROFILE</div>
+        <label>NAME<input type="text" id="pmName" autocomplete="off" spellcheck="false"></label>
+        <label>PLAYSTYLE<input type="text" id="pmPlaystyle" autocomplete="off" spellcheck="false"></label>
+        <div class="pm-meta">
+          <div><span>SLOT</span><b id="pmSlot">P1</b></div>
+          <div><span>TEAM</span><b id="pmTeam">A</b></div>
+          <div><span>CAPTAIN</span><b id="pmCaptain">YES</b></div>
+          <div><span>MODEL</span><b id="pmModel">mistral-small-3.2-24b-instruct</b></div>
+          <div class="pm-wide"><span>SEES</span><b id="pmSees">—</b></div>
+        </div>
+        <p class="pm-note" id="pmNote"></p>
+      </div>
+    </div>
+
+    <div class="pm-foot">
+      <span class="pm-save">Frontend-only changes · not written to configs/</span>
+      <div class="pm-actions">
+        <button class="ctrl-btn" onclick="resetPlayer()">Reset profile</button>
+        <button class="ctrl-btn" id="pmCopy" onclick="copyRosterYaml()">Copy roster.yaml</button>
+        <button class="ctrl-btn" onclick="downloadRosterYaml()">Download YAML</button>
+        <button class="ctrl-btn" onclick="closePlayer()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const svg = document.getElementById('arch');
+  let currentKey = '0';
+
+  const INFO = {
+    '0': {
+      tag: 'OVERVIEW',
+      title: 'Six agents propose. One engine decides.',
+      desc: 'Every event: six private observations, six parallel proposals, one authoritative resolution, one referee ruling, one committed state.',
+      edges: []
+    },
+    '1': {
+      tag: 'STAGE 1 / 6',
+      title: 'Agents observe',
+      desc: 'Each player sees the same committed state through a private view: role, matchups, recent messages, captain call, personal memory, team memory and the CS table.',
+      edges: []
+    },
+    '2': {
+      tag: 'STAGE 2 / 6',
+      title: 'Six parallel decisions',
+      desc: 'All six players call the model independently and return one action proposal each — no shared prompt, no cross-talk.',
+      edges: ['e-proposals']
+    },
+    '3': {
+      tag: 'STAGE 3 / 6',
+      title: 'Engine resolves',
+      desc: 'The engine legalizes the proposals, resolves the actions in order and applies the FIBA 3x3 rules. It is the only writer of state.',
+      edges: ['e-proposals']
+    },
+    '4': {
+      tag: 'STAGE 4 / 6',
+      title: 'Referee rules',
+      desc: 'On every event the referee retrieves the three most relevant FIBA clauses and returns FOUL, VIOLATION or NONE. The engine applies it.',
+      edges: ['e-ref', 'e-rule']
+    },
+    '5': {
+      tag: 'STAGE 5 / 6',
+      title: 'Commit and log',
+      desc: 'The new state is committed and written to one JSONL event log. Analysis, replay and display read that log only.',
+      edges: ['e-engine-log', 'e-log-analysis']
+    },
+    '6': {
+      tag: 'STAGE 6 / 6',
+      title: 'Next event (t+1)',
+      desc: 'Messages, captain calls and memory/CS writes become visible at t+1 — never inside the event that produced them.',
+      edges: ['e-t1']
+    },
+    runner: {
+      tag: 'COMPONENT',
+      title: 'Game runner',
+      desc: 'The asyncio loop loads the YAML configs, runs one decision event at a time, checkpoints, and passes the committed state to the next tick.',
+      edges: ['e-run']
+    }
+  };
+
+  const STEPS = ['1', '2', '3', '4', '5', '6'];
+
+  // ---------------------------------------------------------------
+  // Player detail: architecture + editable attributes
+  // ---------------------------------------------------------------
+  const ATTRS = [
+    ['shooting', 'SHOOTING'],
+    ['passing', 'PASSING'],
+    ['defense', 'DEFENSE'],
+    ['stamina', 'STAMINA'],
+    ['ball_handling', 'BALL HANDLING'],
+    ['rebounding', 'REBOUNDING']
+  ];
+
+  const DEFAULT_ROSTER = {
+    P1: {name: 'Player 1', playstyle: 'prefers driving to the basket and passing to open cutters',
+         shooting: 7, passing: 8, defense: 6, stamina: 8, ball_handling: 7, rebounding: 6},
+    P2: {name: 'Player 2', playstyle: 'perimeter shooter who moves without the ball',
+         shooting: 8, passing: 6, defense: 7, stamina: 7, ball_handling: 6, rebounding: 5},
+    P3: {name: 'Player 3', playstyle: 'strong rebounder and interior defender',
+         shooting: 5, passing: 5, defense: 8, stamina: 8, ball_handling: 5, rebounding: 9}
+  };
+
+  const PLAYERS = {
+    A1: {slot: 'P1', team: 'A', captain: true},
+    A2: {slot: 'P2', team: 'A'},
+    A3: {slot: 'P3', team: 'A'},
+    B1: {slot: 'P1', team: 'B', captain: true},
+    B2: {slot: 'P2', team: 'B'},
+    B3: {slot: 'P3', team: 'B'}
+  };
+
+  const ROSTER_STORAGE = 'bball3x3.roster.v1';
+  const COPY_LABEL = 'Copy roster.yaml';
+  const ACCENTS = {mono: '#ffffff', technical: '#38bdf8', phosphor: '#4ade80'};
+
+  let currentPlayer = null;
+  let currentSlot = null;
+  let lastFocus = null;
+
+  const clone = obj => JSON.parse(JSON.stringify(obj));
+
+  function loadRoster() {
+    const out = clone(DEFAULT_ROSTER);
+    try {
+      const saved = JSON.parse(localStorage.getItem(ROSTER_STORAGE) || 'null');
+      if (saved && typeof saved === 'object') {
+        Object.keys(out).forEach(slot => {
+          const s = saved[slot];
+          if (!s || typeof s !== 'object') return;
+          if (typeof s.name === 'string') out[slot].name = s.name;
+          if (typeof s.playstyle === 'string') out[slot].playstyle = s.playstyle;
+          ATTRS.forEach(([key]) => {
+            const v = Number(s[key]);
+            if (Number.isFinite(v)) out[slot][key] = Math.min(10, Math.max(1, Math.round(v)));
+          });
+        });
+      }
+    } catch (err) {}
+    return out;
+  }
+
+  let ROSTER = loadRoster();
+
+  function saveRoster() {
+    try { localStorage.setItem(ROSTER_STORAGE, JSON.stringify(ROSTER)); } catch (err) {}
+  }
+
+  function isEdited(slot) {
+    const p = ROSTER[slot], d = DEFAULT_ROSTER[slot];
+    return p.name !== d.name || p.playstyle !== d.playstyle || ATTRS.some(([key]) => p[key] !== d[key]);
+  }
+
+  function slotPlayers(slot) {
+    return Object.keys(PLAYERS).filter(pid => PLAYERS[pid].slot === slot);
+  }
+
+  function buildAttrs() {
+    const grid = document.getElementById('pmAttrs');
+    if (grid.dataset.built) return;
+    grid.innerHTML = ATTRS.map(([key, label]) => `
+      <label class="pm-attr">
+        <span>${label}</span>
+        <input type="range" min="1" max="10" step="1" data-attr="${key}">
+        <b data-val="${key}">5</b>
+      </label>`).join('');
+    grid.dataset.built = '1';
+    grid.querySelectorAll('input[type="range"]').forEach(input => {
+      input.addEventListener('input', () => {
+        if (!currentSlot) return;
+        const key = input.dataset.attr;
+        const v = Math.min(10, Math.max(1, parseInt(input.value, 10) || 1));
+        ROSTER[currentSlot][key] = v;
+        grid.querySelector(`[data-val="${key}"]`).textContent = v;
+        saveRoster();
+        document.getElementById('pmEdited').hidden = !isEdited(currentSlot);
+      });
+    });
+  }
+
+  function openPlayer(pid, keepFocus) {
+    const meta = PLAYERS[pid];
+    if (!meta) return;
+    currentPlayer = pid;
+    currentSlot = meta.slot;
+    if (!keepFocus) lastFocus = document.activeElement;
+    buildAttrs();
+
+    const p = ROSTER[meta.slot];
+    const mates = Object.keys(PLAYERS).filter(x => PLAYERS[x].team === meta.team && x !== pid);
+    const opps = Object.keys(PLAYERS).filter(x => PLAYERS[x].team !== meta.team);
+
+    document.getElementById('pmEyebrow').textContent =
+      `PROFILE ${meta.slot} · SHARED BY ${slotPlayers(meta.slot).join(' AND ')}`;
+    document.getElementById('pmTitleText').textContent =
+      `${pid} · ${meta.captain ? 'CAPTAIN' : 'PLAYER'}`;
+    document.getElementById('pmSub').textContent = `TEAM ${meta.team} · LLM PLAYER`;
+    document.getElementById('pmEdited').hidden = !isEdited(meta.slot);
+
+    document.getElementById('pmMapContext').textContent = `${mates.join('/')} · ${opps.join('/')}`;
+    document.getElementById('pmMapPrompt').textContent = `system + ${meta.slot} profile`;
+    document.getElementById('pmFlowNote').textContent =
+      `Team context: ${pid} ↔ ${mates.join('/')} (2-way comms) · team memory and CS visible at t+1. The proposal joins the other five; the engine resolves all six.`;
+
+    document.getElementById('pmExObs').textContent = [
+      '[OWN STATE]',
+      `${pid} · ${meta.captain ? 'BALL_HANDLER' : 'OFF_BALL'} · (7,4)`,
+      `ball ${meta.captain ? 'true' : 'false'} · fatigue 2.4/10`,
+      '',
+      '[TEAMMATES]',
+      `${mates[0]} (5,6) CUTTING_LEFT`,
+      `${mates[1]} (9,3) SPOT_UP`,
+      '',
+      '[GAME]',
+      'ev 42 · A 8–B 6',
+      '06:42 · shot 9.0s'
+    ].join(String.fromCharCode(10));
+
+    document.getElementById('pmExMem').textContent = [
+      'PERSONAL (8 EVENTS)',
+      `t-4 pass ${mates[0]} → corner 3`,
+      't-3 drive R, contact, no call',
+      `t-2 ${mates[1]} miss C&S; rebound`,
+      `t-1 pass ${mates[0]}, deflected`,
+      '',
+      'SHARED (T+1)',
+      'M2 P1 defensive: leaves lanes',
+      'M3 P2 defensive: foul prone'
+    ].join(String.fromCharCode(10));
+
+    document.getElementById('pmExCs').textContent = [
+      'COUNTER-STRATEGY',
+      'CS1 [off] vs switch',
+      '  → slip rim / corner 3',
+      '',
+      'CS2 [def] vs DHO',
+      '  → switch, deny corner',
+      '',
+      'starts empty; grows from',
+      'accepted proposals at t+1'
+    ].join(String.fromCharCode(10));
+
+    document.getElementById('pmExComms').textContent = [
+      'MESSAGES (t-2/t-1)',
+      `${mates[0]} "I have weak side"`,
+      `${mates[1]} "screen coming left"`,
+      '',
+      'CAPTAIN CALL',
+      `${meta.captain ? pid : meta.team + '1'} [tactic] attack the switch`,
+      '',
+      'RETURN',
+      `action=PASS to=${mates[0]}`,
+      'msg "corner!" · mem M2'
+    ].join(String.fromCharCode(10));
+
+    document.getElementById('pmName').value = p.name;
+    document.getElementById('pmPlaystyle').value = p.playstyle;
+    document.getElementById('pmSlot').textContent = meta.slot;
+    document.getElementById('pmTeam').textContent = meta.team;
+    document.getElementById('pmCaptain').textContent = meta.captain ? 'YES' : 'NO';
+    document.getElementById('pmSees').textContent = `${mates.join(' · ')} vs ${opps.join(' · ')}`;
+    document.getElementById('pmNote').textContent =
+      `${slotPlayers(meta.slot).join(' and ')} share profile ${meta.slot} — edits mirror across both teams. Export uses the configs/teams/roster.yaml schema.`;
+
+    ATTRS.forEach(([key]) => {
+      const input = document.querySelector(`#pmAttrs input[data-attr="${key}"]`);
+      input.value = p[key];
+      document.querySelector(`#pmAttrs [data-val="${key}"]`).textContent = p[key];
+    });
+
+    document.getElementById('playerModal').hidden = false;
+    document.body.classList.add('modal-open');
+    svg.querySelectorAll('.node').forEach(n => {
+      n.classList.toggle('selected', n.dataset.player === pid);
+    });
+    document.getElementById('pmClose').focus();
+  }
+
+  function closePlayer() {
+    const modal = document.getElementById('playerModal');
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+    currentPlayer = null;
+    currentSlot = null;
+    svg.querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  function resetPlayer() {
+    if (!currentSlot) return;
+    const pid = currentPlayer;
+    ROSTER[currentSlot] = clone(DEFAULT_ROSTER[currentSlot]);
+    saveRoster();
+    openPlayer(pid, true);
+  }
+
+  function yamlQuote(s) {
+    return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+
+  function rosterYaml() {
+    const lines = [
+      '# sample roster template, fill in chosen fiba 3x3 players',
+      'source_note: "FIBA 3x3 sample roster"',
+      'captain: P1',
+      '',
+      'players:'
+    ];
+    ['P1', 'P2', 'P3'].forEach(slot => {
+      const p = ROSTER[slot];
+      lines.push(`  - slot: ${slot}`);
+      lines.push(`    name: ${yamlQuote(p.name)}`);
+      lines.push('    source_url: "https://fiba3x3.com"');
+      lines.push('    abilities:');
+      ATTRS.forEach(([key]) => lines.push(`      ${key}: ${p[key]}`));
+      lines.push(`    playstyle: ${yamlQuote(p.playstyle)}`);
+      lines.push('    synthetic_fields: []');
+      lines.push('');
+    });
+    return lines.join('\n').trimEnd() + '\n';
+  }
+
+  function legacyCopy(text) {
+    return new Promise((resolve, reject) => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); resolve(); } catch (err) { reject(err); }
+      document.body.removeChild(ta);
+    });
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+    }
+    return legacyCopy(text);
+  }
+
+  function downloadRosterYaml() {
+    download(new Blob([rosterYaml()], {type: 'text/yaml;charset=utf-8'}), 'roster.yaml');
+  }
+
+  function copyRosterYaml() {
+    copyText(rosterYaml()).then(() => {
+      const btn = document.getElementById('pmCopy');
+      btn.textContent = 'Copied';
+      btn.classList.add('active');
+      setTimeout(() => { btn.textContent = COPY_LABEL; btn.classList.remove('active'); }, 1400);
+    }).catch(() => {
+      const btn = document.getElementById('pmCopy');
+      btn.textContent = 'Copy failed';
+      setTimeout(() => { btn.textContent = COPY_LABEL; }, 1400);
+    });
+  }
+
+  document.getElementById('pmName').addEventListener('input', e => {
+    if (!currentSlot) return;
+    ROSTER[currentSlot].name = e.target.value;
+    saveRoster();
+    document.getElementById('pmEdited').hidden = !isEdited(currentSlot);
+  });
+
+  document.getElementById('pmPlaystyle').addEventListener('input', e => {
+    if (!currentSlot) return;
+    ROSTER[currentSlot].playstyle = e.target.value;
+    saveRoster();
+    document.getElementById('pmEdited').hidden = !isEdited(currentSlot);
+  });
+
+  document.getElementById('playerModal').addEventListener('click', e => {
+    if (e.target.id === 'playerModal') closePlayer();
+  });
+
+  function setTheme(theme) {
+    svg.classList.remove('theme-mono', 'theme-technical', 'theme-phosphor');
+    svg.classList.add('theme-' + theme);
+    document.querySelectorAll('[data-theme]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === theme);
+    });
+    document.documentElement.style.setProperty('--pm-accent', ACCENTS[theme] || '#ffffff');
+  }
+
+  function show(key) {
+    const info = INFO[key];
+    if (!info) return;
+    currentKey = key;
+
+    svg.querySelectorAll('.node').forEach(n => {
+      n.classList.toggle('active', n.dataset.info === key);
+    });
+    svg.querySelectorAll('.edge').forEach(e => e.classList.remove('active'));
+    (info.edges || []).forEach(id => {
+      const edge = document.getElementById(id);
+      if (edge) edge.classList.add('active');
+    });
+
+    document.getElementById('cap-tag').textContent = info.tag;
+    document.getElementById('cap-title').textContent = info.title;
+    document.getElementById('cap-desc').textContent = info.desc;
+    document.getElementById('cap-step').textContent = STEPS.includes(key)
+      ? (STEPS.indexOf(key) + 1) + ' / 6'
+      : '—';
+  }
+
+  function stepForward() {
+    const idx = STEPS.indexOf(currentKey);
+    show(STEPS[(idx + 1) % STEPS.length]);
+  }
+
+  function resetAll() {
+    show('0');
+    document.getElementById('cap-step').textContent = '—';
+  }
+
+  function serializeSVG() {
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', '2560');
+    clone.setAttribute('height', '1440');
+    clone.querySelectorAll('.node, .edge').forEach(el => el.classList.remove('active'));
+    return new XMLSerializer().serializeToString(clone);
+  }
+
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportSVG() {
+    download(new Blob([serializeSVG()], { type: 'image/svg+xml;charset=utf-8' }), 'llm-3x3-architecture.svg');
+  }
+
+  function exportPNG() {
+    const data = serializeSVG();
+    const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2560;
+      canvas.height = 1440;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(b => { if (b) download(b, 'llm-3x3-architecture.png'); }, 'image/png');
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      alert('PNG export failed in this browser. Use Export SVG instead.');
+    };
+    img.src = url;
+  }
+
+  svg.querySelectorAll('.node').forEach(node => {
+    node.addEventListener('click', () => {
+      if (node.dataset.player) {
+        openPlayer(node.dataset.player);
+        return;
+      }
+      show(node.dataset.info);
+    });
+  });
+
+  document.addEventListener('keydown', e => {
+    const modalOpen = !document.getElementById('playerModal').hidden;
+    if (e.key === 'Escape') {
+      if (modalOpen) closePlayer();
+      else resetAll();
+    }
+    if (e.key === 'ArrowRight' && !modalOpen) stepForward();
+  });
+
+  document.documentElement.style.setProperty('--pm-accent', ACCENTS.mono);
+</script>
+</body>
+</html>

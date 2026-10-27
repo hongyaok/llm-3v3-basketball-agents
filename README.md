@@ -66,86 +66,22 @@ uv run ruff check .
 # or if venv is activated: ruff check .
 ```
 
-## results dashboard and game replay
+## results dashboard and game replay (./frontend)
 
-Courtside is a local front end for saved ablation results and games. From the
-repository root, with the experiment artifacts under
-`runs/`, run:
+**Courtside** is a self-contained Next.js web application inside ./frontend that visualises the final ablation results from ./results, provides interactive half-court game replays, and embeds the interactive system architecture page.
 
-```bash
-.venv/bin/bball dashboard
-# Windows PowerShell: .venv\Scripts\bball.exe dashboard
-# or:
-uv run bball dashboard
-```
+To build and run the frontend locally from ./frontend:
 
-Open **http://127.0.0.1:8765**. The server discovers complete exports under
-`runs/` and shows an experiment selector when more than one is available.
-For example, place future exports and logs like this:
+`ash
+cd frontend
+npm install
+npm run build
+npm run start
+`
 
-```text
-runs/
-  abl_comms_v1_results/abl_comms_v1/export/games.csv
-  abl_comms_v1_runs/.../*.jsonl
-  abl_captain_v1_results/abl_captain_v1/export/games.csv
-  abl_captain_v1_runs/.../*.jsonl
-  abl_memory_v1_results/abl_memory_v1/export/games.csv
-  abl_memory_v1_runs/.../*.jsonl
-```
-
-Each results folder also needs `export/teams.csv` and
-`export/possessions.csv`; `stats.json` and `plots/adaptation.csv` are read when
-present. Refresh the page after adding a complete export. Results remain
-separate when switching experiments. To use another parent folder or select a
-single experiment explicitly:
-
-```bash
-uv run bball dashboard --experiments-root /path/to/runs --port 8765
-# or one experiment only:
-uv run bball dashboard --results /path/to/abl_captain_v1_results \
-  --runs /path/to/abl_captain_v1_runs --port 8765
-```
-
-The results directory can be the downloaded parent folder or the experiment
-folder containing `export/games.csv`, `export/teams.csv`,
-`export/possessions.csv`, `stats.json`, and `plots/adaptation.csv`. Replay logs
-are matched recursively by game ID, so exported paths from another machine
-do not need changing. A selected results directory containing multiple candidate
-exports, duplicate experiment IDs, or duplicate game logs is reported instead
-of choosing one silently.
-
-- **All experiments:** separate A–B, A–C, and A–D cards show pooled PPP,
-  paired PPP effects, matchup-specific primary measures, system validity,
-  and links to each
-  experiment. Rates and paired estimates are never pooled across experiments.
-- **Overview:** wins, pooled rates, paired seed effects, saved confidence
-  intervals and Wilcoxon results, and adaptation curves. Unavailable measures
-  keep their evidence status; the paired estimate is distinct from a difference
-  of pooled rates. The measure panel highlights PPP and MAAR for A–B, PPP and
-  CCAR for A–C, and PPP, MAUR and CSSR for A–D. The full metric table remains
-  available, with each matchup's primary rows first. Adaptation choices follow
-  the relevant plotted measures that exist in the export. A separate validity
-  panel shows team-level IAR and game-wide SIR; SIR comes from `games.csv`,
-  so it is not a team-paired metric in `stats.json`.
-- **Game library:** search by seed/game, filter by first possession or winner,
-  and open any matched replay.
-- **Court replay:** play, pause, step, scrub, adjust speed, jump to a possession
-  or scoring event, and select a player. Inspect executed actions and rationales,
-  teammate messages (including delivery timing and suppression), captain calls,
-  resolution evidence and referee decisions. Space toggles playback; arrow keys
-  step while focus is outside an interactive control. Playback pace is measured
-  in seconds per recorded event. The timeline can show 40 events, 80 events, or
-  the full game, with markers for scores, turnovers, and referee calls. The
-  possession selector follows the currently displayed possession.
-- **Methods & data:** experiment configuration, interpretation notes, evidence
-  limitations, and downloads of the original result tables/statistics.
-
-Court positions are recorded states after each event. Trails connect saved
-previous/current positions. Motion between states is linearly interpolated between adjacent
-recorded positions for illustration; stationary intervals stay stationary. These transitions
-do not reconstruct actual movement paths or invent shot locations when the log has
-no shot evidence. Game logs load on demand. The server binds only to localhost, makes no LLM calls, and leaves source
-files untouched. No Node installation or additional dependencies are required.
+Open **http://localhost:3000** (or run 
+pm run dev for development). If you update the zip archives in ./results or system_architecture.html, run 
+pm run sync-results inside rontend/ to sync them into rontend/results/ and rontend/public/static/. The rontend/ folder can also be deployed directly to Vercel (set **Root Directory** to rontend).
 
 ## referee rulebook index
 
