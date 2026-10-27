@@ -831,7 +831,7 @@ export function ReplayView({
   const cues = eventCues(game, f, frameIndex);
   const shotDesc = describeShotEvent(game, frameIndex);
 
-  const shotArcGeometry = useMemo(() => {
+  const shotArcGeometry = (() => {
     if (!shotDesc) return null;
     if (shotDesc.kind === "score" || shotDesc.kind === "miss") {
       const start = getShooterReleasePosition(
@@ -872,7 +872,7 @@ export function ReplayView({
       return { kind: shotDesc.kind, d, start, end, looseEnd: null };
     }
     return null;
-  }, [frameIndex, game, geom.basket, geom.xy, s.ball.status, shotDesc]);
+  })();
 
   const lastIdx = game.frames.length - 1;
   const span = Math.min(timelineSpan, game.frames.length);
