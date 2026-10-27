@@ -10,7 +10,7 @@ from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 ASSETS = Path(__file__).with_name("web")
 METRICS = {
@@ -25,7 +25,29 @@ METRICS = {
         "Coordination conflicts", "Same-zone coordination conflicts", True,
     ),
 }
-LABELS = {"A_full": "Full system", "B_no_comm": "No communication"}
+LABELS = {"A_full": "Full system", "B_no_comm": "No communication",
+          "C_no_captain": "No captain", "D_read_only": "Read-only memory"}
+FEATURES = {"comms": "Communication", "captain": "Captain",
+            "memory_write": "Memory updates"}
+MATCHUP_MEASURES = {
+    "B_no_comm": {
+        "primary": ["ppp", "maar"], "context": ["ccar"],
+        "adaptation": ["ppp", "maur", "cssr"],
+        "note": "Message alignment applies to the communicating condition. "
+                "Captain alignment remains useful context for both conditions.",
+    },
+    "C_no_captain": {
+        "primary": ["ppp", "ccar"], "context": [], "adaptation": ["ppp"],
+        "note": "Captain alignment applies only where captain directives are enabled. "
+                "Strategy selection is not evaluated for the no-captain condition.",
+    },
+    "D_read_only": {
+        "primary": ["ppp", "maur", "cssr"], "context": [],
+        "adaptation": ["maur", "cssr", "ppp"],
+        "note": "The read-only condition can reference initial memory but cannot write "
+                "new memory or strategies. Interpret its strategy selection with that constraint.",
+    },
+}
 
 
 def _number(value: Any) -> float | None:
@@ -102,6 +124,12 @@ class DashboardData:
 
     def overview(self) -> dict:
         conditions = sorted({row["condition"] for row in self.teams})
+        if len(conditions) != 2:
+            raise ValueError("A dashboard experiment must contain exactly two conditions")
+        baseline = self.stats.get("baseline")
+        if baseline not in conditions:
+            baseline = "A_full" if "A_full" in conditions else conditions[0]
+        conditions = [baseline, *(c for c in conditions if c != baseline)]
         condition_rows = {c: [r for r in self.teams if r["condition"] == c] for c in conditions}
         comparison = next((r for r in self.stats.get("results", [])
                            if r["experiment_id"] == self.experiment_id), {})
@@ -135,13 +163,32 @@ class DashboardData:
                     "conditions": {c: _pool(condition_rows[c], key) for c in conditions},
                     "paired": comparison.get("metrics", {}).get(key)}
                    for key, (label, description, percent) in METRICS.items()]
+        condition_summaries = [{
+            "id": c, "label": LABELS.get(c, c.replace("_", " ")), "wins": wins[c],
+            "features": {name: (condition_rows[c][0][f"{name}_enabled"].lower() == "true"
+                                if condition_rows[c][0].get(f"{name}_enabled") else None)
+                         for name in FEATURES},
+        } for c in conditions]
+        changed = [name for name in FEATURES
+                   if condition_summaries[0]["features"][name] is not None
+                   and condition_summaries[1]["features"][name] is not None
+                   and condition_summaries[0]["features"][name]
+                   != condition_summaries[1]["features"][name]] if len(conditions) == 2 else []
+        title = f"{FEATURES[changed[0]]} ablation" if len(changed) == 1 else "Team comparison"
+        comparison_id = comparison.get("comparison") or (
+            conditions[1] if len(conditions) > 1 else None
+        )
+        focus = MATCHUP_MEASURES.get(comparison_id, {
+            "primary": ["ppp"], "context": [], "adaptation": ["ppp"], "note": "",
+        })
         return {
             "experiment_id": self.experiment_id, "model": self.games[0]["model_slug"],
-            "conditions": [{"id": c, "label": LABELS.get(c, c), "wins": wins[c],
-                            "features": {
-                                name: condition_rows[c][0].get(f"{name}_enabled") == "True"
-                                for name in ("comms", "captain", "memory_write")}}
-                           for c in conditions],
+            "conditions": condition_summaries,
+            "study": {"title": title, "baseline": baseline,
+                      "comparison": comparison_id,
+                      "changed_features": changed, "measures": focus},
+            "validity": {"sir": _pool(self.games, "sir"),
+                         "iar": next(metric for metric in metrics if metric["id"] == "iar")},
             "summary": {"games": len(games), "complete_games": sum(g["complete"] for g in games),
                         "seeds": len({g["seed"] for g in games}), "draws": draws,
                         "possessions": len(self.possessions),
@@ -237,7 +284,92 @@ class DashboardData:
                 "possessions": [r for r in self.possessions if r["game_id"] == game_id]}
 
 
-def make_handler(data: DashboardData) -> type[BaseHTTPRequestHandler]:
+class DashboardCatalog:
+    """Expose complete saved experiments from one local results directory."""
+
+    def __init__(self, root: Path | None = None, data: DashboardData | None = None) -> None:
+        self.root = root.expanduser().resolve() if root else None
+        self.entries: dict[str, DashboardData] = {}
+        if data:
+            self.entries[data.experiment_id] = data
+        if self.root:
+            self.refresh()
+
+    def refresh(self) -> None:
+        if self.root is None:
+            return
+        if not self.root.is_dir():
+            raise ValueError(f"Experiment directory does not exist: {self.root}")
+        for results in sorted(self.root.glob("*_results")):
+            exports = list(results.glob("*/export/games.csv")) if results.is_dir() else []
+            if not exports or any(
+                not (games.parent / name).is_file()
+                for games in exports for name in ("teams.csv", "possessions.csv")
+            ):
+                continue
+            runs = self.root / f"{results.name.removesuffix('_results')}_runs"
+            data = DashboardData(results, runs)
+            existing = self.entries.get(data.experiment_id)
+            if existing and existing.results_dir != data.results_dir:
+                raise ValueError(f"Duplicate experiment ID: {data.experiment_id}")
+            self.entries[data.experiment_id] = data
+        if not self.entries:
+            raise ValueError(f"No complete experiment exports found under {self.root}")
+
+    @property
+    def default_id(self) -> str:
+        return "abl_comms_v1" if "abl_comms_v1" in self.entries else sorted(self.entries)[0]
+
+    def get(self, experiment_id: str | None) -> DashboardData:
+        try:
+            return self.entries[experiment_id or self.default_id]
+        except KeyError as exc:
+            raise KeyError(f"Unknown experiment: {experiment_id}") from exc
+
+    def options(self) -> dict:
+        experiments = []
+        for experiment_id in sorted(self.entries):
+            overview = self.entries[experiment_id].overview()
+            experiments.append({"id": experiment_id, "title": overview["study"]["title"],
+                                "conditions": [c["label"] for c in overview["conditions"]],
+                                "games": overview["summary"]["games"]})
+        return {"default": self.default_id, "experiments": experiments}
+
+    def comparison_summary(self) -> dict:
+        """Keep each experiment's rates and paired estimates separate."""
+        rows = []
+        for experiment_id in sorted(self.entries):
+            data = self.entries[experiment_id]
+            overview = data.overview()
+            metrics = {metric["id"]: metric for metric in overview["metrics"]}
+            primary = []
+            for metric_id in overview["study"]["measures"]["primary"]:
+                metric = metrics[metric_id]
+                paired = metric["paired"]
+                primary.append({
+                    "id": metric_id, "name": metric["name"],
+                    "percent": metric["percent"], "conditions": metric["conditions"],
+                    "paired": ({"status": paired.get("status"),
+                                "effect_mean": paired.get("effect_mean"),
+                                "bootstrap_95_ci": paired.get("bootstrap_95_ci"),
+                                "p_value": (paired.get("wilcoxon") or {}).get("p_value"),
+                                "n_seeds": paired.get("n_seeds")}
+                               if paired else None),
+                })
+            rows.append({
+                "experiment_id": experiment_id, "title": overview["study"]["title"],
+                "conditions": overview["conditions"], "summary": overview["summary"],
+                "primary_metrics": primary, "logs_matched": len(data.log_paths),
+                "validity": overview["validity"],
+                "measure_note": overview["study"]["measures"]["note"],
+                "has_stats": bool(data.stats), "has_adaptation": bool(data.adaptation),
+            })
+        return {"experiments": rows}
+
+
+def make_handler(source: DashboardData | DashboardCatalog) -> type[BaseHTTPRequestHandler]:
+    catalog = source if isinstance(source, DashboardCatalog) else DashboardCatalog(data=source)
+
     class Handler(BaseHTTPRequestHandler):
         def send_bytes(self, content: bytes, content_type: str, status: int = 200) -> None:
             self.send_response(status)
@@ -256,19 +388,31 @@ def make_handler(data: DashboardData) -> type[BaseHTTPRequestHandler]:
                             "application/json; charset=utf-8", status)
 
         def do_GET(self) -> None:
-            path = unquote(urlsplit(self.path).path)
+            url = urlsplit(self.path)
+            path = unquote(url.path)
+            selected = parse_qs(url.query).get("experiment", [None])[0]
             try:
-                if path == "/api/experiment":
+                if path == "/api/experiments":
+                    catalog.refresh()
+                    self.send_json(catalog.options())
+                elif path == "/api/comparisons":
+                    catalog.refresh()
+                    self.send_json(catalog.comparison_summary())
+                elif path == "/api/experiment":
+                    data = catalog.get(selected)
                     self.send_json(data.overview())
                 elif path.startswith("/api/games/"):
+                    data = catalog.get(selected)
                     self.send_json(data.replay(path.removeprefix("/api/games/")))
                 elif path in {"/downloads/games.csv", "/downloads/teams.csv",
                               "/downloads/possessions.csv"}:
+                    data = catalog.get(selected)
                     self.send_bytes((data.results_dir / "export" / Path(path).name).read_bytes(),
                                     "text/csv; charset=utf-8")
                 elif path == "/downloads/stats.json":
+                    data = catalog.get(selected)
                     self.send_json(data.stats)
-                elif path in {"/", "/index.html", "/app.js", "/style.css"}:
+                elif path in {"/", "/index.html", "/app.js", "/style.css", "/replay.css"}:
                     name = "index.html" if path == "/" else path[1:]
                     mime = {"html": "text/html", "js": "text/javascript", "css": "text/css"}
                     self.send_bytes((ASSETS / name).read_bytes(),
@@ -283,12 +427,17 @@ def make_handler(data: DashboardData) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def serve_dashboard(results_dir: Path, runs_dir: Path, port: int = 8765) -> None:
-    data = DashboardData(results_dir, runs_dir)
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(data))
-    print(f"Courtside · {data.experiment_id}: http://127.0.0.1:{server.server_port}", flush=True)
-    print(f"{len(data.games)} games · {len(data.log_paths)} replay logs · Ctrl+C to stop",
-          flush=True)
+def serve_dashboard(results_dir: Path | None = None, runs_dir: Path | None = None,
+                    port: int = 8765, experiments_root: Path = Path("runs")) -> None:
+    if (results_dir is None) != (runs_dir is None):
+        raise ValueError("--results and --runs must be provided together")
+    catalog = (DashboardCatalog(data=DashboardData(results_dir, runs_dir))
+               if results_dir is not None and runs_dir is not None
+               else DashboardCatalog(root=experiments_root))
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(catalog))
+    print(f"Courtside · {len(catalog.entries)} experiment(s): "
+          f"http://127.0.0.1:{server.server_port}", flush=True)
+    print("Saved experiments and replay logs · Ctrl+C to stop", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

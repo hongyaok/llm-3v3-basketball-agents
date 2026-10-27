@@ -27,15 +27,16 @@ def main() -> None:
 
 @app.command("dashboard")
 def dashboard(
-    results: Path = typer.Option(Path("runs/abl_comms_v1_results"), "--results"),
-    runs: Path = typer.Option(Path("runs/abl_comms_v1_runs"), "--runs"),
+    results: Path | None = typer.Option(None, "--results"),
+    runs: Path | None = typer.Option(None, "--runs"),
+    experiments_root: Path = typer.Option(Path("runs"), "--experiments-root"),
     port: int = typer.Option(8765, "--port", min=1, max=65535),
 ) -> None:
     """Open a local results dashboard and game replay server (no LLM calls)."""
     from .display.dashboard import serve_dashboard
 
     try:
-        serve_dashboard(results, runs, port)
+        serve_dashboard(results, runs, port, experiments_root)
     except (OSError, ValueError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
