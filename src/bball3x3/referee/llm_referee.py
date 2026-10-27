@@ -42,6 +42,10 @@ Return exactly one XML element and no other text. Do not wrap it in a code block
 Allowed foul_type values: DEFENSIVE_FOUL, OFFENSIVE_FOUL, SHOOTING_FOUL,
 LOOSE_BALL_FOUL, UNSPORTSMANLIKE, TECHNICAL. For FOUL set foul="TRUE";
 otherwise set foul="FALSE". Cite only IDs in RULE_EXCERPTS, comma-separated.
+The template above is the NO-CALL form. If you decide a foul occurred, call MUST be
+"FOUL" (never call="NONE" with foul="TRUE"), for example:
+<REFEREE_DECISION call="FOUL" foul="TRUE" offender="B1"
+ fouled_player="A1" foul_type="DEFENSIVE_FOUL" violation_type="NONE" rules="R33.4"/>
 """
 
 _ATTRIBUTES = frozenset({
@@ -91,6 +95,12 @@ def parse_referee_xml(
         raise ValueError("Rule citations must be unique, nonempty IDs")
     if any(rule_id not in retrieved_chunk_ids for rule_id in ids):
         raise ValueError("Rule citation was not among the retrieved excerpts")
+
+    # Some models (e.g. mistral-small-3.2) fill in a complete foul but leave call at the
+    # template's "NONE". foul="TRUE" plus a valid foul_type is an explicit foul verdict, so
+    # treat it as FOUL; it still has to pass every FOUL check below.
+    if call == "NONE" and foul == "TRUE" and foul_type in _FOUL_TYPES:
+        call = "FOUL"
 
     if call == "NONE":
         if (foul, offender, fouled, foul_type, violation_type, ids) != (
