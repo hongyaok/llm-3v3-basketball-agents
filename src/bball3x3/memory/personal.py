@@ -112,9 +112,15 @@ class PersonalMemory:
                         )
                 else:
                     if holder == self.player_id:
-                        self._entries.append(
-                            f"E{e}: Your pass to {pass_target} went out of bounds."
-                        )
+                        # describe the actual reason; non-steal turnovers are not all OOB
+                        if reason == "OOB_TURNOVER":
+                            msg = f"Your pass to {pass_target} went out of bounds."
+                        elif reason == "SHOT_CLOCK":
+                            msg = (f"The shot clock expired on your pass to {pass_target} "
+                                   "(turnover).")
+                        else:
+                            msg = f"Your pass to {pass_target} was a turnover ({reason})."
+                        self._entries.append(f"E{e}: {msg}")
                     else:
                         self._entries.append(
                             f"E{e}: {holder} committed a pass turnover ({reason})."

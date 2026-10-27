@@ -93,6 +93,11 @@ def apply_referee_call(
             config,
             was_shooting=decision.foul_type == "SHOOTING_FOUL",
             shot_value=shot_value,
+            # a shooting foul on a basket that already counted is an and-one (1 FT)
+            made_shot=(
+                decision.foul_type == "SHOOTING_FOUL"
+                and event.get("possession_reason") == "MADE_BASKET"
+            ),
         )
         event["foul_called"] = True
         foul_team = penalty["foul_team"]

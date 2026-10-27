@@ -27,12 +27,25 @@ You may call FOUL, judgement-based VIOLATION (GOALTENDING,
 BASKET_INTERFERENCE, STALLING), or NONE. A FOUL needs a valid offender,
 foul type and cited excerpt ID. A violation needs an offender, violation type
 and cited excerpt ID. Do not call a foul solely because contact occurred.
+Use the engine's contact evidence in DETERMINISTIC_QUERY together with the excerpts:
+- SCREEN_CONTACT with screener_moving=true is an illegal (moving) screen: call FOUL,
+  foul_type=OFFENSIVE_FOUL, offender=contact_initiator, fouled_player=contact_recipient.
+  With screener_moving=false the screen is legal: return NONE.
+- BODY_CONTACT_DRIVE with defender_set=true means the defender held a legal guarding
+  position, so the driver charged: OFFENSIVE_FOUL by contact_initiator on
+  contact_recipient. With defender_set=false the moving defender blocked the driver:
+  DEFENSIVE_FOUL by contact_initiator on contact_recipient.
+- For other contact, call a foul only if the excerpts and evidence show illegal contact.
 Return exactly one XML element and no other text. Do not wrap it in a code block or markdown:
 <REFEREE_DECISION call="NONE" foul="FALSE" offender="NONE"
  fouled_player="NONE" foul_type="NONE" violation_type="NONE" rules=""/>
 Allowed foul_type values: DEFENSIVE_FOUL, OFFENSIVE_FOUL, SHOOTING_FOUL,
 LOOSE_BALL_FOUL, UNSPORTSMANLIKE, TECHNICAL. For FOUL set foul="TRUE";
 otherwise set foul="FALSE". Cite only IDs in RULE_EXCERPTS, comma-separated.
+The template above is the NO-CALL form. If you decide a foul occurred, call MUST be
+"FOUL" (never call="NONE" with foul="TRUE"), for example:
+<REFEREE_DECISION call="FOUL" foul="TRUE" offender="B1"
+ fouled_player="A1" foul_type="DEFENSIVE_FOUL" violation_type="NONE" rules="R33.4"/>
 """
 
 _ATTRIBUTES = frozenset({
@@ -82,6 +95,12 @@ def parse_referee_xml(
         raise ValueError("Rule citations must be unique, nonempty IDs")
     if any(rule_id not in retrieved_chunk_ids for rule_id in ids):
         raise ValueError("Rule citation was not among the retrieved excerpts")
+
+    # Some models (e.g. mistral-small-3.2) fill in a complete foul but leave call at the
+    # template's "NONE". foul="TRUE" plus a valid foul_type is an explicit foul verdict, so
+    # treat it as FOUL; it still has to pass every FOUL check below.
+    if call == "NONE" and foul == "TRUE" and foul_type in _FOUL_TYPES:
+        call = "FOUL"
 
     if call == "NONE":
         if (foul, offender, fouled, foul_type, violation_type, ids) != (

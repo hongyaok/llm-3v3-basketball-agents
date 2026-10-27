@@ -158,6 +158,60 @@ def test_none_and_judgement_violation_are_supported():
     assert violation.violation_type == "GOALTENDING"
 
 
+def test_call_none_with_complete_foul_fields_is_read_as_foul():
+    # mistral-small-3.2 copies call="NONE" from the template but fills in the foul
+    reply = _xml(
+        call="NONE", foul="TRUE", offender="A2", fouled_player="B2",
+        foul_type="OFFENSIVE_FOUL", rules="R33.7",
+    )
+    result = asyncio.run(LLMReferee(StubBackend(reply), StubRetriever()).judge_with_trace(
+        _screen_state()
+    ))
+    assert result.failure_code is None
+    assert result.decision.call == "FOUL"
+    assert result.decision.offender == "A2"
+    assert result.decision.fouled_player == "B2"
+    assert result.decision.foul_type == "OFFENSIVE_FOUL"
+    assert result.decision.rule_ids_cited == ["R33.7"]
+
+
+@pytest.mark.parametrize("reply", [
+    # foul="TRUE" without a valid foul type stays a contradiction
+    _xml(call="NONE", foul="TRUE", offender="A2", fouled_player="B2", rules="R33.7"),
+    # the coerced foul still has to cite a retrieved rule
+    _xml(call="NONE", foul="TRUE", offender="A2", fouled_player="B2",
+         foul_type="OFFENSIVE_FOUL", rules=""),
+    # and still needs an opposing fouled player
+    _xml(call="NONE", foul="TRUE", offender="B2", fouled_player="B3",
+         foul_type="DEFENSIVE_FOUL", rules="R33.7"),
+    # foul="FALSE" with player fields is still rejected
+    _xml(call="NONE", offender="A2", fouled_player="B2", rules="R33.7"),
+])
+def test_call_none_with_incomplete_or_invalid_foul_is_still_rejected(reply):
+    result = asyncio.run(LLMReferee(StubBackend(reply), StubRetriever()).judge_with_trace(
+        _screen_state()
+    ))
+    assert result.decision.call == "NONE"
+    assert result.failure_code == "REF_PARSE_FAIL"
+
+
+def test_coerced_foul_on_objective_event_is_still_rejected():
+    state = make_state(event={"event_type": "SHOT_CLOCK", "objective_violation": True})
+    reply = _xml(
+        call="NONE", foul="TRUE", offender="A1", fouled_player="B1",
+        foul_type="DEFENSIVE_FOUL", rules="R33.7",
+    )
+    result = asyncio.run(LLMReferee(StubBackend(reply), StubRetriever()).judge_with_trace(state))
+    assert result.decision.call == "NONE"
+    assert result.failure_code == "REF_PARSE_FAIL"
+
+
+def test_system_prompt_spells_out_the_foul_form():
+    from bball3x3.referee.llm_referee import SYSTEM_PROMPT
+    assert 'call MUST be\n"FOUL"' in SYSTEM_PROMPT
+    assert '<REFEREE_DECISION call="FOUL" foul="TRUE"' in SYSTEM_PROMPT
+
+
 def test_objective_event_cannot_become_a_referee_call():
     state = make_state(event={"event_type": "SHOT_CLOCK", "objective_violation": True})
     reply = _xml(
