@@ -1,0 +1,226 @@
+{
+  "experiment_id": "abl_comms_v1",
+  "spent_usd": 0.0,
+  "games": {
+    "abl_comms_v1_s101_B": {
+      "seed": 101,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s101_B.jsonl",
+      "status": "complete",
+      "events": 218,
+      "score": {
+        "A": 13,
+        "B": 21
+      }
+    },
+    "abl_comms_v1_s102_A": {
+      "seed": 102,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s102_A.jsonl",
+      "status": "complete",
+      "events": 222,
+      "score": {
+        "A": 16,
+        "B": 10
+      }
+    },
+    "abl_comms_v1_s101_A": {
+      "seed": 101,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s101_A.jsonl",
+      "status": "complete",
+      "events": 238,
+      "score": {
+        "A": 17,
+        "B": 22
+      }
+    },
+    "abl_comms_v1_s102_B": {
+      "seed": 102,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s102_B.jsonl",
+      "status": "complete",
+      "events": 253,
+      "score": {
+        "A": 19,
+        "B": 14
+      }
+    },
+    "abl_comms_v1_s103_A": {
+      "seed": 103,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s103_A.jsonl",
+      "status": "complete",
+      "events": 243,
+      "score": {
+        "A": 5,
+        "B": 18
+      }
+    },
+    "abl_comms_v1_s103_B": {
+      "seed": 103,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s103_B.jsonl",
+      "status": "complete",
+      "events": 248,
+      "score": {
+        "A": 19,
+        "B": 18
+      }
+    },
+    "abl_comms_v1_s104_B": {
+      "seed": 104,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s104_B.jsonl",
+      "status": "complete",
+      "events": 232,
+      "score": {
+        "A": 21,
+        "B": 8
+      }
+    },
+    "abl_comms_v1_s104_A": {
+      "seed": 104,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s104_A.jsonl",
+      "status": "complete",
+      "events": 256,
+      "score": {
+        "A": 15,
+        "B": 8
+      }
+    },
+    "abl_comms_v1_s105_A": {
+      "seed": 105,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s105_A.jsonl",
+      "status": "complete",
+      "events": 207,
+      "score": {
+        "A": 4,
+        "B": 21
+      }
+    },
+    "abl_comms_v1_s105_B": {
+      "seed": 105,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s105_B.jsonl",
+      "status": "complete",
+      "events": 224,
+      "score": {
+        "A": 5,
+        "B": 22
+      }
+    },
+    "abl_comms_v1_s106_B": {
+      "seed": 106,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s106_B.jsonl",
+      "status": "complete",
+      "events": 245,
+      "score": {
+        "A": 8,
+        "B": 17
+      }
+    },
+    "abl_comms_v1_s106_A": {
+      "seed": 106,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s106_A.jsonl",
+      "status": "complete",
+      "events": 253,
+      "score": {
+        "A": 3,
+        "B": 19
+      }
+    },
+    "abl_comms_v1_s107_A": {
+      "seed": 107,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s107_A.jsonl",
+      "status": "complete",
+      "events": 223,
+      "score": {
+        "A": 6,
+        "B": 12
+      }
+    },
+    "abl_comms_v1_s107_B": {
+      "seed": 107,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s107_B.jsonl",
+      "status": "complete",
+      "events": 249,
+      "score": {
+        "A": 12,
+        "B": 15
+      }
+    },
+    "abl_comms_v1_s108_A": {
+      "seed": 108,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s108_A.jsonl",
+      "status": "complete",
+      "events": 229,
+      "score": {
+        "A": 3,
+        "B": 15
+      }
+    },
+    "abl_comms_v1_s108_B": {
+      "seed": 108,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s108_B.jsonl",
+      "status": "complete",
+      "events": 250,
+      "score": {
+        "A": 17,
+        "B": 5
+      }
+    },
+    "abl_comms_v1_s109_A": {
+      "seed": 109,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s109_A.jsonl",
+      "status": "complete",
+      "events": 246,
+      "score": {
+        "A": 9,
+        "B": 14
+      }
+    },
+    "abl_comms_v1_s109_B": {
+      "seed": 109,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s109_B.jsonl",
+      "status": "complete",
+      "events": 242,
+      "score": {
+        "A": 7,
+        "B": 21
+      }
+    },
+    "abl_comms_v1_s110_A": {
+      "seed": 110,
+      "first_possession": "A",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s110_A.jsonl",
+      "status": "complete",
+      "events": 238,
+      "score": {
+        "A": 11,
+        "B": 17
+      }
+    },
+    "abl_comms_v1_s110_B": {
+      "seed": 110,
+      "first_possession": "B",
+      "path": "/Workspace/Users/1ch.ang@asm.com/llm-3v3-basketball-agents-main/runs_databricks/databricks-meta-llama-3-3-70b-instruct/abl_comms_v1/abl_comms_v1_s110_B.jsonl",
+      "status": "complete",
+      "events": 236,
+      "score": {
+        "A": 10,
+        "B": 15
+      }
+    }
+  }
+}

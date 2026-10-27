@@ -1,0 +1,61 @@
+{
+  "aggregation": "sum valid per-game numerators and denominators within condition/bin; exclude missing evidence; no exposure is null, never zero",
+  "baseline": "A_full",
+  "bin_edges_elapsed_fraction": [
+    0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1
+  ],
+  "bin_source": "game clock/phase before event, relative to configured regulation duration",
+  "groups": [
+    {
+      "comparison": "B_no_comm",
+      "excluded_seeds": [],
+      "experiment_id": "abl_comms_v1",
+      "n_paired_games": 20,
+      "n_paired_seeds": 10
+    }
+  ],
+  "maur_cssr_attribution": "event start",
+  "metrics": [
+    "ppp",
+    "maur",
+    "cssr"
+  ],
+  "overtime_bin": "ot",
+  "overtime_display": "separate marker, never connected to regulation curve",
+  "pairing": "both A-start and B-start complete, possession-validated games per seed",
+  "plots": [
+    {
+      "comparison": "B_no_comm",
+      "experiment_id": "abl_comms_v1",
+      "file": "comparison-001-ppp.png",
+      "metric": "ppp"
+    },
+    {
+      "comparison": "B_no_comm",
+      "experiment_id": "abl_comms_v1",
+      "file": "comparison-001-maur.png",
+      "metric": "maur"
+    },
+    {
+      "comparison": "B_no_comm",
+      "experiment_id": "abl_comms_v1",
+      "file": "comparison-001-cssr.png",
+      "metric": "cssr"
+    }
+  ],
+  "ppp_attribution": "possession start",
+  "regulation_bins": [
+    "q1",
+    "q2",
+    "q3",
+    "q4",
+    "q5"
+  ],
+  "schema_version": 1,
+  "source_excluded_games": []
+}
