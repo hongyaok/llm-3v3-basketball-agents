@@ -196,6 +196,26 @@ export interface ComparisonsSummary {
   experiments: ComparisonExperimentRow[];
 }
 
+/** Per-game counting stats derived from the saved game logs. */
+export interface BoxScoreCondition {
+  games: number;
+  passes: number;
+  assists: number;
+  rebounds: number;
+  turnovers: number;
+  passes_per_game: number | null;
+  assists_per_game: number | null;
+  rebounds_per_game: number | null;
+  turnovers_per_game: number | null;
+}
+
+export interface ExperimentBoxScore {
+  experiment_id: string;
+  games_with_logs: number;
+  conditions: Record<string, BoxScoreCondition>;
+  note: string;
+}
+
 export interface PlayerState {
   id: string;
   team: TeamId;

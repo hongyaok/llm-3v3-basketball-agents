@@ -1,6 +1,23 @@
 # Courtside Frontend (`./frontend`)
 
-Self-contained Next.js web application for the **LLM 3×3 Basketball Agents** study. Visualises the three ablation experiments (`abl_comms_v1`, `abl_captain_v1`, `abl_memory_v1`), provides an interactive half-court game replay viewer for all 32 recorded game logs (31 exported + 1 log-only), and embeds the interactive **System Architecture** page.
+Self-contained Next.js web application for the **LLM 3×3 Basketball Agents** study. Visualises the four experiments (`pilot_v1`, `abl_comms_v1`, `abl_captain_v1`, `abl_memory_v1`), renders the cross-study metric tables from `/comparisons`, provides an interactive half-court game replay viewer for all 36 recorded game logs, and embeds the interactive **System Architecture** page.
+
+## What `public/data` contains
+
+`npm run data` writes one JSON file per experiment plus two shared files:
+
+| Path | Contents |
+| --- | --- |
+| `catalog.json` | Experiment list, default experiment, dataset counts |
+| `comparisons.json` | Per-experiment primary metrics and validity summary |
+| `experiments/<id>.json` | Full overview: metrics, paired seeds, adaptation rows, config |
+| `boxscore/<id>.json` | Per-game passes, assists, rebounds and turnovers, averaged per condition |
+| `replays/<id>/<game>.json` | Frame-level replay for one game |
+| `downloads/<id>/` | Verbatim `games.csv`, `teams.csv`, `possessions.csv`, `stats.json` |
+
+`boxscore/` is derived from the JSONL game logs at build time, because the CSV
+exports do not carry counting stats. The rules are in
+`scripts/lib/boxscore.ts`; the root README §5 states them in prose.
 
 ## Quick start (local)
 

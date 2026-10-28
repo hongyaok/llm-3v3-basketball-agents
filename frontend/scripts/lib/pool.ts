@@ -22,11 +22,19 @@ export function poolMetric(
     statusCounts[status] += 1;
   }
 
-  const valid = rows.filter(
-    (row) =>
-      row[`${metric}_status`] === "ok" &&
-      toFiniteNumber(row[`${metric}_rate`]) !== null
-  );
+  const valid = rows.filter((row) => {
+    const status = row[`${metric}_status`];
+    if (status === "ok") {
+      return toFiniteNumber(row[`${metric}_rate`]) !== null;
+    }
+    // A condition with the feature switched off still produced a real rate
+    // when it had opportunities: CSSR without a captain sees 398 tactic calls.
+    // With a zero denominator there is nothing to report.
+    return (
+      status === "not_applicable" &&
+      (toFiniteNumber(row[`${metric}_denominator`]) ?? 0) > 0
+    );
+  });
 
   let numerator = 0;
   let denominator = 0;

@@ -1,7 +1,12 @@
 import React from "react";
 import type { Metadata } from "next";
 import { getComparisonsData } from "@/lib/data-server";
+import {
+  getAllBoxScores,
+  getAllExperimentOverviews,
+} from "@/lib/data-server";
 import { ComparisonsSection } from "@/components/ComparisonsSection";
+import { CrossExperimentTables } from "@/components/CrossExperimentTables";
 
 export const dynamic = "error";
 
@@ -13,6 +18,13 @@ export const metadata: Metadata = {
 
 export default function DedicatedComparisonsPage() {
   const data = getComparisonsData();
-  return <ComparisonsSection data={data} isEmbedded={false} />;
+  const overviews = getAllExperimentOverviews();
+  const boxScores = getAllBoxScores();
+  return (
+    <>
+      <ComparisonsSection data={data} isEmbedded={false} />
+      <CrossExperimentTables overviews={overviews} boxScores={boxScores} />
+    </>
+  );
 }
 

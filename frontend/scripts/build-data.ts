@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { parseCsvText } from "./lib/csv";
+import { averageTeamBox, computeGameBoxScore, type TeamBoxScore } from "./lib/boxscore";
 import { INCLUDED_SEEDS } from "./lib/constants";
 import { assertNoNonFiniteNumbers } from "./lib/numbers";
 import { buildExperimentOverview } from "./lib/overview";
@@ -14,7 +15,7 @@ import { buildGameReplay, buildUnexportedGameSummary } from "./lib/replay";
 import { decodeUtf8, readZipEntries, type ZipEntryMap } from "./lib/zip";
 import type { GameSummaryRow } from "../src/lib/types";
 
-const PIPELINE_VERSION = "1.1.0";
+const PIPELINE_VERSION = "1.2.0";
 const FRONTEND_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_RESULTS_DIR = path.join(FRONTEND_ROOT, "results");
 const OUTPUT_DATA_DIR = path.join(FRONTEND_ROOT, "public", "data");
@@ -277,11 +278,17 @@ export function buildDataFromDirectory(
     );
 
     // Write replays for exported games
+    const boxByCondition: Record<string, TeamBoxScore[]> = {};
     for (const row of gamesRows) {
       const gameId = row.game_id;
       const logEntry = logEntriesByGameId.get(gameId);
       if (!logEntry) continue;
       const jsonlText = decodeUtf8(logEntry.bytes);
+      const box = computeGameBoxScore(jsonlText);
+      const conditionA = row.team_A_condition;
+      const conditionB = row.team_B_condition;
+      if (conditionA) (boxByCondition[conditionA] ??= []).push(box.A);
+      if (conditionB) (boxByCondition[conditionB] ??= []).push(box.B);
       const replay = buildGameReplay({
         gameId,
         jsonlText,
@@ -294,6 +301,25 @@ export function buildDataFromDirectory(
         replay
       );
     }
+
+    // Per-game counting stats derived from the saved logs (team panel of the deck)
+    writeJsonSafe(path.join(outputDir, "boxscore", `${experimentId}.json`), {
+      experiment_id: experimentId,
+      games_with_logs: Object.values(boxByCondition).reduce(
+        (n, rows) => n + rows.length,
+        0
+      ) / 2,
+      conditions: Object.fromEntries(
+        Object.entries(boxByCondition).map(([condition, rows]) => [
+          condition,
+          averageTeamBox(rows),
+        ])
+      ),
+      note:
+        "Passes, assists, rebounds and turnovers are counted from the saved " +
+        "JSONL logs: PASS actions, made shots after a teammate pass, " +
+        "loose-ball gathers and turnover records, averaged per game.",
+    });
 
     // Write downloads
     const dlDir = path.join(outputDir, "downloads", experimentId);

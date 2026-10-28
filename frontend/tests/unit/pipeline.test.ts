@@ -159,6 +159,23 @@ describe("pipeline unit tests (ported from test_dashboard.py)", () => {
     const unavailable = poolMetric([{ maar_status: "not_applicable" }], "maar");
     expect(unavailable.rate).toBeNull();
     expect(unavailable.status).toBe("not_applicable");
+
+    // A switched-off feature that still made real tactic calls keeps its rate:
+    // CSSR without a captain is 305/398, not N/A.
+    const gated = poolMetric(
+      [
+        {
+          cssr_numerator: "305",
+          cssr_denominator: "398",
+          cssr_rate: "",
+          cssr_status: "not_applicable",
+        },
+      ],
+      "cssr"
+    );
+    expect(gated.rate).toBeCloseTo(305 / 398, 10);
+    expect(gated.status).toBe("ok");
+    expect(gated.status_counts).toEqual({ not_applicable: 1 });
   });
 
   it("overview matches local logs and condition identity", () => {
@@ -324,7 +341,7 @@ describe("pipeline unit tests (ported from test_dashboard.py)", () => {
     expect(captain.conditions[1].label).toBe("No captain");
     expect(captain.conditions[1].features.captain).toBe(false);
     expect(captain.study.comparison).toBe("C_no_captain");
-    expect(captain.study.measures.primary).toEqual(["ppp", "ccar"]);
+    expect(captain.study.measures.primary).toEqual(["ppp", "ccar", "cssr"]);
     expect(captain.study.measures.adaptation).toEqual(["ppp"]);
 
     entries.abl_memory_v1 = makeAblationEntry(
@@ -360,6 +377,7 @@ describe("pipeline unit tests (ported from test_dashboard.py)", () => {
     expect(summaries.abl_captain_v1.primary_metrics.map((m) => m.id)).toEqual([
       "ppp",
       "ccar",
+      "cssr",
     ]);
     expect(summaries.abl_memory_v1.primary_metrics.map((m) => m.id)).toEqual([
       "ppp",

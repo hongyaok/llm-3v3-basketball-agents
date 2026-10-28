@@ -930,6 +930,18 @@ Retrieved Rules: FIBA 3x3 Art. 33 (Cylinder & Legal Guarding)
               </div>
               <div className="glossary-item">
                 <div className="glossary-term">
+                  <strong className="mono">CCR</strong>
+                  <span>Coordination Conflict Rate</span>
+                </div>
+                <p>
+                  Share of team-events where two or more teammates&apos;
+                  executed actions target the same court zone, over team-events
+                  with at least two zone-targeted actions.{" "}
+                  <strong>Lower is better.</strong>
+                </p>
+              </div>
+              <div className="glossary-item">
+                <div className="glossary-term">
                   <strong className="mono">MAUR &amp; CSSR</strong>
                   <span>Memory Utilisation &amp; Counter-Strategy Rate</span>
                 </div>

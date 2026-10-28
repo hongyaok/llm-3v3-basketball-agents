@@ -44,7 +44,7 @@ Three subsystems sit on top of that base:
 |---|---|
 | **Coordination** | Teammate messages, a captain who issues tactic calls as directives, and shared team memory with similarity merging |
 | **Referee** | Retrieves the top-3 relevant clauses from the indexed FIBA 3×3 rulebook (RAG) and grounds each foul/violation judgement in them |
-| **Analysis** | Possession reconstruction, 9 metrics, paired-seed statistics, adaptation plots, replay |
+| **Analysis** | Possession reconstruction, 9 metrics plus a per-game box score, paired-seed statistics, adaptation plots, replay |
 
 ![System architecture](docs/screenshots/05-architecture.png)
 
@@ -154,7 +154,7 @@ npm run start      # http://localhost:3000
 | `configs/` | `llm.yaml` (models, budget), `simulation.yaml` (every physics coefficient), `experiments/*.yaml`, `teams/*.yaml` |
 | `data/rules/` | FIBA 3×3 rulebook PDF + 95 indexed clauses + 384-dim embeddings + manifest |
 | `tests/` | 58 files, 522 tests |
-| `frontend/` | "Courtside" Next.js 15 dashboard: comparisons, game library, court replay, architecture page |
+| `frontend/` | "Courtside" Next.js 15 dashboard: comparisons, cross-study tables, game library, court replay, architecture page |
 | `results/` | Source-of-truth result archives (compressed game logs + exports) |
 | `runs/` | Where **new** experiments write. Empty by design. |
 | `scripts/` | Validation and build helpers (see [§7](#7-command-reference)) |
@@ -198,18 +198,30 @@ clear behind the arc, 15 × 11 m grid with a 6.75 m arc.
 | **PPP** | Points scored / completed possessions | higher |
 | **MAAR** — message alignment | Actions aligned with teammate messages | higher |
 | **CCAR** — captain alignment | Actions aligned with captain directives | higher |
-| **CSSR** — strategy selection | Tactic calls using a valid coordination strategy | higher |
+| **CCR** — coordination conflicts | Team-events where two teammates' executed actions hit the same court zone, over team-events with at least two zone-targeted actions | **lower** |
 | **MAUR** — memory usage | Decisions referencing shared memory | higher |
 | **Grounded MAUR** | Memory references that are actually grounded in context | higher |
+| **CSSR** — strategy selection | Tactic calls using a valid coordination strategy | higher |
 | **IAR** — invalid actions | Invalid proposals / all decisions | **lower** |
-| **Coordination conflicts** | Same-zone conflicts per team-event | **lower** |
 | **SIR** — state inconsistency | Invariant violations / state transitions | **lower** |
+
+Four **per-game counting stats** sit beside the rates: passes, assists,
+rebounds, turnovers. They are counts, not rates, so they carry no evidence
+status. The dashboard derives them from the saved JSONL logs:
+
+| Stat | Counted as |
+|---|---|
+| Pass | One executed `PASS` action, credited to the passer's team |
+| Assist | A made shot in the replay event right after a teammate's pass |
+| Rebound | A loose ball gathered — one `LOOSE → HELD` transition, credited to whoever picks it up |
+| Turnover | One logged turnover entry, credited to the team that lost the ball |
 
 Two rules that matter when reading the tables:
 
 1. **Every rate keeps its numerator, denominator and evidence status.** A rate
    that cannot be computed is `not_applicable`, `insufficient_evidence` or
-   `incomplete` — never a silent zero.
+   `incomplete` — never a silent zero. A gated rate with a non-zero denominator
+   is still reported: CSSR without a captain is a real 305/398, not `N/A`.
 2. **Paired seeds are the primary inference.** Each seed is played twice with the
    first possession swapped; the two are averaged before a seed-cluster bootstrap
    (95% CI) and a two-sided Wilcoxon test. Possession-level models are
@@ -219,50 +231,97 @@ Two rules that matter when reading the tables:
 
 ## 6. Experiments and results
 
-Four studies, **36 games**, **11,750 events**, **2,473 possessions**, **$19.88**
-of logged model spend.
+**36 games · 8 seeds · 11,750 events · 2,473 possessions · $19.88 model spend.**
+
+Every table below also renders at [`/comparisons`](frontend/) under *All four
+studies, side by side* — same numbers, rebuilt from `results/seeds_106_110.zip`.
+
+**The bottom line.** No ablation separates from its control at 5%. The mirror
+control — identical configuration on both sides — produces a **+0.131** PPP gap,
+larger than any treatment effect measured here. What did move exactly as
+designed is the mechanism check: every metric that should switch off, switched
+off.
+
+### What was run
 
 | # | Study | A (Full system) | B | Seeds | Games |
 |---|---|---|---|---|---|
-| 1 | `abl_captain_v1` | comms ✓ captain ✓ memory ✓ | **No captain** | 106–110 | 10 |
+| 1 | `pilot_v1` | Full system | **Full system (Side B)** — mirror control | 101–103 | 6 |
 | 2 | `abl_comms_v1` | comms ✓ captain ✓ memory ✓ | **No communication** | 106–110 | 10 |
-| 3 | `abl_memory_v1` | comms ✓ captain ✓ memory ✓ | **Read-only memory** | 106–110 | 10 |
-| 4 | `pilot_v1` | Full system | **Full system (Side B)** — mirror control | 101–103 | 6 |
+| 3 | `abl_captain_v1` | comms ✓ captain ✓ memory ✓ | **No captain** | 106–110 | 10 |
+| 4 | `abl_memory_v1` | comms ✓ captain ✓ memory ✓ | **Read-only memory** | 106–110 | 10 |
 
-### Headline numbers
+### Points per possession
 
-| Study | Pooled PPP (A / B) | Paired effect | 95% CI | p | Wins A/B |
+| Study | Seeds | Pooled PPP (A / B) | Paired ΔPPP | 95% CI | p | Wins A / B |
+|---|---|---|---|---|---|---|
+| Control (mirror) | 3 | 0.620 / 0.478 | **+0.131** | −0.081 to +0.404 | 0.750 | 4 / 2 |
+| Communication | 5 | 0.405 / 0.448 | **−0.057** | −0.269 to +0.114 | 1.000 | 4 / 6 |
+| Captain | 5 | 0.429 / 0.427 | **+0.028** | −0.194 to +0.234 | 1.000 | 5 / 5 |
+| Memory updates | 5 | 0.422 / 0.559 | **−0.143** | −0.281 to −0.006 | 0.313 | 2 / 8 |
+
+Three things to take from that table:
+
+1. **Every p-value is above 0.05.** Five paired seeds buy very little.
+2. **The memory interval excludes zero, but p = 0.313.** Read the interval and
+   the test together, never one alone.
+3. **The control's +0.131 is the largest effect in the table.** Both sides ran
+   the same configuration, so at this sample size that is noise.
+
+### Coordination and adaptation
+
+| Study | MAAR | CCAR | CCR | MAUR | CSSR |
 |---|---|---|---|---|---|
-| Captain | 0.429 / 0.427 | **+0.028** | −0.194 to +0.234 | 1.000 | 5 / 5 |
-| Communication | 0.405 / 0.448 | **−0.057** | −0.269 to +0.114 | 1.000 | 4 / 6 |
-| Memory updates | 0.422 / 0.559 | **−0.143** | −0.281 to −0.006 | 0.313 | 2 / 8 |
-| Control (mirror) | 0.620 / 0.478 | **+0.131** | −0.081 to +0.404 | 0.750 | 4 / 2 |
+| Control (mirror) | 26.13% / 25.61% | 27.62% / 23.73% | 45.01% / 36.30% | 24.38% / 22.10% | 90.89% / 95.33% |
+| Communication | 26.67% / N/A | 28.96% / 23.80% | 36.06% / 40.10% | 26.49% / 30.69% | 96.25% / 96.70% |
+| Captain | 25.93% / 24.84% | 27.75% / N/A | 43.64% / 45.49% | 23.57% / 24.49% | 92.58% / 76.63% |
+| Memory updates | 24.70% / 31.48% | 26.64% / 31.96% | 41.11% / 42.70% | 23.41% / 15.52% | 95.73% / 0.00% |
 
-**Read this honestly.** No ablation separates from its control at 5%: every
-p-value is above 0.05, so none of these is a finding yet. The memory ablation's
-interval excludes zero, but its Wilcoxon p is 0.313 — which is what 5 paired
-seeds buys you. The mirror control, where both sides run an identical
-configuration, produces a +0.131 PPP gap, **larger than any treatment effect
-measured here**. That is the single most important number in the table: at this
-sample size the noise floor is bigger than the signal.
+First value is the full system, second is the comparison condition. `N/A`
+appears only where a condition had no opportunities in scope: no messages to
+align to, no directives to follow.
 
-Mechanism checks did move as designed, which is the useful positive result:
+What each row shows:
 
-| Check | Full system | Ablated condition |
+1. **Memory updates — the mechanism check passes.** MAUR 23.41% → 15.52%, CSSR
+   95.73% → 0.00%. Read-only memory keeps the store but can never select a
+   stored tactic.
+2. **Communication — talking helps spacing.** CCR 36.06% → 40.10% without it:
+   more same-zone overlap when nobody can call a teammate off. CCR is
+   lower-is-better.
+3. **Captain — strategy selection falls, everything else holds.** CSSR 92.58% →
+   76.63%: without a captain, tactic calls still happen but fewer name a stored
+   counter-strategy. MAAR, MAUR and CCR barely shift.
+4. **CCR is the noisiest metric here.** The mirror control reads 45.01% vs
+   36.30% with one configuration on both sides. Treat small CCR gaps as noise.
+
+> The per-game export tags the no-captain CSSR cells `not_applicable`, because
+> no captain issued those calls. The calls themselves still happen — 305 of 398
+> named a visible strategy — so the pool reports 76.63% rather than `N/A`.
+
+### Box score and system validity
+
+Per-game counts, read straight off the saved logs:
+
+| Study | Passes / game | Assists / game | Rebounds / game | Turnovers / game |
+|---|---|---|---|---|
+| Control (mirror) | 77.8 / 74.3 | 8.5 / 7.7 | 13.3 / 10.0 | 13.2 / 15.5 |
+| Communication | 94.4 / 65.3 | 7.1 / 5.6 | 19.9 / 14.3 | 18.9 / 16.2 |
+| Captain | 93.8 / 95.8 | 7.0 / 7.9 | 18.9 / 14.0 | 20.4 / 17.3 |
+| Memory updates | 106.9 / 65.2 | 7.1 / 7.8 | 20.5 / 15.4 | 18.7 / 11.4 |
+
+Validity, same order:
+
+| Study | IAR (A / B) | SIR |
 |---|---|---|
-| Captain alignment (CCAR) | 27.8% | not applicable without captain |
-| Message alignment (MAAR) | 26.7% | not applicable without comms |
-| Memory usage (MAUR) | 23.4% | 15.5% read-only |
-| Strategy selection (CSSR) | 95.7% | 0.0% read-only |
+| Control (mirror) | 1.33% / 1.79% | 0.00% |
+| Communication | 1.72% / 0.91% | 0.00% |
+| Captain | 1.55% / 1.20% | 0.00% |
+| Memory updates | 1.34% / 2.05% | 0.00% |
 
-System validity was clean across all 36 games — **SIR = 0.00%** (0 violations in
-11,750 transitions), with IAR between 0.9% and 2.1%.
-
-![All four ablations side by side](docs/screenshots/02-comparisons.png)
-
-![Communication ablation overview](docs/screenshots/03-experiment-overview.png)
-
-![Court replay with decisions and referee evidence](docs/screenshots/04-replay-court.png)
+**Zero invariant violations across 11,750 transitions**, IAR between 0.9% and
+2.1%. A clean SIR only means the physics stayed consistent, so the referee's
+rulebook grounding is checked separately by the retrieval validation in §7.
 
 ### Reproducing these numbers
 
@@ -273,12 +332,24 @@ uv run bball stats  results/abl_comms_v1-export results/abl_comms_v1-stats.json
 uv run bball plots  results/abl_comms_v1-export results/abl_comms_v1-plots
 ```
 
-> **Note on seeds.** The YAML files list seeds `101–110`. The reported ablations
-> use **106–110 only** (the five seeds with complete A/B pairs); seeds 101–103 are
+Then rebuild the dashboard, which recounts the box score from the same logs:
+
+```bash
+cd frontend && npm run data
+```
+
+![All four ablations side by side](docs/screenshots/02-comparisons.png)
+
+![Communication ablation overview](docs/screenshots/03-experiment-overview.png)
+
+![Court replay with decisions and referee evidence](docs/screenshots/04-replay-court.png)
+
+> **Seeds.** The YAML files list seeds `101–110`. The reported ablations use
+> **106–110 only** (the five seeds with complete A/B pairs); seeds 101–103 are
 > the control. Running a config as-is therefore plays 20 games, not the 10
 > reported here — filter by seed before comparing.
 
-> **Note on cost.** `configs/llm.yaml` caps spend at `$10.00` per experiment
+> **Cost.** `configs/llm.yaml` caps spend at `$10.00` per experiment
 > (`runtime.budget.max_usd_per_experiment`, line 41). A full 20-game run can
 > exceed that; the cap stops the run rather than overspending.
 

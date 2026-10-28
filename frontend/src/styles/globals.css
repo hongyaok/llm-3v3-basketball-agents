@@ -5929,3 +5929,21 @@ td small {
   }
 }
 
+
+/* Cross-study tables on /comparisons: stacked A/B values, no h-scroll. */
+.cross-study-table th {
+  white-space: nowrap;
+}
+.cross-study-table td:first-child {
+  min-width: 180px;
+}
+.cross-study-table .pair-line {
+  display: block;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.cross-study-table .pair-line + .pair-line,
+.cross-study-table td.mono small {
+  color: var(--muted);
+  font-size: 11px;
+}

@@ -59,12 +59,14 @@ export const MATCHUP_MEASURES: Record<string, StudyMeasures> = {
       "Captain alignment remains useful context for both conditions.",
   },
   C_no_captain: {
-    primary: ["ppp", "ccar"],
+    primary: ["ppp", "ccar", "cssr"],
     context: [],
     adaptation: ["ppp"],
     note:
-      "Captain alignment applies only where captain directives are enabled. " +
-      "Strategy selection is not evaluated for the no-captain condition.",
+      "Captain alignment is not applicable without directives: nothing in the " +
+      "no-captain condition addresses a captain. Strategy selection is still " +
+      "evaluated, because tactic calls still occur and can still name a stored " +
+      "counter-strategy.",
   },
   D_read_only: {
     primary: ["ppp", "maur", "cssr"],
