@@ -348,24 +348,14 @@ latency and raw replies are logged per decision in `runs/`.
 **LLMs were used as a development tool.** AI coding assistants were used to draft
 and refactor implementation code, write tests, and produce documentation during
 this project. All such output was reviewed, run, and accepted or rejected by the
-team. The 522-test suite, the invariant checker and the seeded deterministic
-engine exist precisely so that generated code can be verified rather than
-trusted.
+team. 
 
-**This README was written with AI assistance** (Hermes Agent, model
-`deepseek-v4.1-flash`), including the screenshots, which were captured from the
-running dashboard. Every figure quoted in §6 was read programmatically from
-`frontend/public/data/comparisons.json`, not from prose or memory.
+**This README was written with AI assistance**
 
 **Human-owned contributions:** the research question and proposal, the
 experimental design (conditions, seeds, paired first-possession design, metric
 definitions), the choice and interpretation of the statistical tests, the
-simulation and rules specification, and every conclusion drawn in §6 — including
-the decision to report the null results plainly.
-
-> **Team action required:** confirm the exact assistant and model list used during
-> development before submission. This section names what is verifiable from the
-> repository; it does not claim to be the team's complete tool inventory.
+simulation and rules specification, and every conclusion drawn in §6.
 
 ---
 
