@@ -85,6 +85,7 @@ export function conditionSymbol(
   condition: ConditionSummary,
   fallback: string
 ): string {
+  if (condition.id.endsWith("_B")) return "B";
   return condition.id.match(/^([A-Z])_/)?.[1] || fallback;
 }
 

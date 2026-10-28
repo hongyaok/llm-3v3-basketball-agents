@@ -107,7 +107,7 @@ export function GameLibraryClient({
                       {g.unexported ? (
                         <span
                           className="status-label amber"
-                          title="Present in raw run logs, not included in interim_31games export tables"
+                          title="Present in raw run logs, not included in exported summary tables"
                         >
                           Log only
                         </span>

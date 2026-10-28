@@ -199,7 +199,11 @@ export function buildExperimentOverview(input: ExperimentInput): ExperimentOverv
       : [];
 
   const title =
-    changed.length === 1 ? `${FEATURES[changed[0]]} ablation` : "Team comparison";
+    changed.length === 1
+      ? `${FEATURES[changed[0]]} ablation`
+      : conditions.includes("A_full_B")
+        ? "Control experiment"
+        : "Team comparison";
 
   const comparisonId =
     (typeof comparison.comparison === "string" && comparison.comparison) ||

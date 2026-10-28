@@ -16,6 +16,7 @@ import {
 } from "../../scripts/lib/zip";
 import { fmt, sign, clock, title } from "../../src/lib/format";
 import {
+  describeFoulCall,
   describeShotEvent,
   eventActor,
   eventCues,
@@ -587,6 +588,94 @@ describe("pipeline unit tests (ported from test_dashboard.py)", () => {
     expect(eventTitle(mockReplay.frames[4], mockReplay.frames, 4)).toBe(
       "Turnover: A1 stole ball from B1"
     );
+    expect(describeFoulCall(mockReplay, 4)).toBeNull();
+
+    // Event 5: Offensive foul + turnover (both shotDesc turnover and foulDesc exist)
+    mockReplay.frames.push({
+      event_idx: 5,
+      state: {
+        event_idx: 5,
+        game_clock_s: 585,
+        shot_clock_s: 12,
+        score: { A: 1, B: 0 },
+        team_fouls: { A: 1, B: 0 },
+        offense: "B",
+        players: {
+          A1: { id: "A1", team: "A", pos: [6, 5] },
+          B1: { id: "B1", team: "B", pos: [6, 5], has_ball: true },
+        },
+        ball: { status: "HELD", pos: [6, 5], holder: "B1" },
+      },
+      decisions: [],
+      messages: [],
+      captain_calls: [],
+      possessions_ended: [],
+      resolution: {
+        record_type: "resolution",
+        event_idx: 5,
+        turnovers: [{ team: "A", player: "A1", reason: "OFFENSIVE_FOUL" }],
+      },
+      referee: {
+        record_type: "referee",
+        event_idx: 5,
+        decision: {
+          call: "FOUL",
+          offender: "A1",
+          fouled_player: "B1",
+          foul_type: "OFFENSIVE_FOUL",
+          rule_ids_cited: ["R33.7"],
+        },
+      },
+    });
+
+    const foul5 = describeFoulCall(mockReplay, 5);
+    expect(foul5?.tag).toBe("REFEREE · OFFENSIVE FOUL");
+    expect(foul5?.message).toBe("A1 offensive foul on B1");
+    expect(foul5?.subtext).toBe("Team A fouls: 1 · Possession to Team B · R33.7");
+    expect(describeShotEvent(mockReplay, 5)?.kind).toBe("turnover");
+
+    // Event 6: Defensive foul only
+    mockReplay.frames.push({
+      event_idx: 6,
+      state: {
+        event_idx: 6,
+        game_clock_s: 580,
+        shot_clock_s: 12,
+        score: { A: 1, B: 0 },
+        team_fouls: { A: 1, B: 1 },
+        offense: "A",
+        players: {
+          A1: { id: "A1", team: "A", pos: [6, 5], has_ball: true },
+          B1: { id: "B1", team: "B", pos: [6, 5] },
+        },
+        ball: { status: "HELD", pos: [6, 5], holder: "A1" },
+      },
+      decisions: [],
+      messages: [],
+      captain_calls: [],
+      possessions_ended: [],
+      resolution: {
+        record_type: "resolution",
+        event_idx: 6,
+      },
+      referee: {
+        record_type: "referee",
+        event_idx: 6,
+        decision: {
+          call: "FOUL",
+          offender: "B1",
+          fouled_player: "A1",
+          foul_type: "DEFENSIVE_FOUL",
+          rule_ids_cited: ["R33.4"],
+        },
+      },
+    });
+
+    const foul6 = describeFoulCall(mockReplay, 6);
+    expect(foul6?.tag).toBe("REFEREE · DEFENSIVE FOUL");
+    expect(foul6?.message).toBe("B1 defensive foul on A1");
+    expect(foul6?.subtext).toBe("Team B fouls: 1 · Team A retains ball · R33.4");
+    expect(describeShotEvent(mockReplay, 6)).toBeNull();
   });
 });
 

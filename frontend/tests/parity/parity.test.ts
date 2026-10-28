@@ -89,19 +89,19 @@ describe("Python DashboardData / DashboardCatalog parity gate", () => {
     };
     assertDeepEqualWithFloatTolerance(strippedCatalog, golden.options);
     expect(catalog.dataset).toEqual({
-      source_zip: "interim_31games.zip",
-      exported_games: 31,
-      total_logs: 32,
-      unexported_logs: ["abl_comms_v1_s106_B"],
+      source_zip: "seeds_106_110.zip",
+      exported_games: 36,
+      total_logs: 36,
+      unexported_logs: [],
     });
   });
 
-  it("matches comparison_summary() across all 3 experiments", () => {
+  it("matches comparison_summary() across all experiments", () => {
     const comparisons = loadJson(path.join(DATA_DIR, "comparisons.json"));
     assertDeepEqualWithFloatTolerance(comparisons, golden.comparisons);
   });
 
-  for (const expId of ["abl_captain_v1", "abl_comms_v1", "abl_memory_v1"]) {
+  for (const expId of ["abl_captain_v1", "abl_comms_v1", "abl_memory_v1", "pilot_v1"]) {
     it(`matches overview() for ${expId}`, () => {
       const actual = loadJson(
         path.join(DATA_DIR, "experiments", `${expId}.json`)
@@ -114,10 +114,11 @@ describe("Python DashboardData / DashboardCatalog parity gate", () => {
   }
 
   for (const [key, expAndGame] of [
-    ["abl_comms_v1", ["abl_comms_v1", "abl_comms_v1_s101_A"]],
-    ["abl_comms_v1_s106_A", ["abl_comms_v1", "abl_comms_v1_s106_A"]],
-    ["abl_captain_v1", ["abl_captain_v1", "abl_captain_v1_s101_A"]],
-    ["abl_memory_v1", ["abl_memory_v1", "abl_memory_v1_s101_A"]],
+    ["abl_comms_v1", ["abl_comms_v1", "abl_comms_v1_s106_A"]],
+    ["abl_comms_v1_s106_B", ["abl_comms_v1", "abl_comms_v1_s106_B"]],
+    ["abl_captain_v1", ["abl_captain_v1", "abl_captain_v1_s106_A"]],
+    ["abl_memory_v1", ["abl_memory_v1", "abl_memory_v1_s106_A"]],
+    ["pilot_v1", ["pilot_v1", "pilot_v1_s101_A"]],
   ] as const) {
     it(`matches replay() for ${expAndGame[1]}`, () => {
       const [expId, gameId] = expAndGame;
@@ -128,15 +129,29 @@ describe("Python DashboardData / DashboardCatalog parity gate", () => {
     });
   }
 
-  it("generates replay for log-only game abl_comms_v1_s106_B with warning", () => {
+  it("includes seeds 106-110 for ablations and seeds 101-103 for pilot_v1", () => {
     const s106B = loadJson(
       path.join(DATA_DIR, "replays", "abl_comms_v1", "abl_comms_v1_s106_B.json")
     );
     expect(s106B.id).toBe("abl_comms_v1_s106_B");
-    expect(s106B.unexported).toBe(true);
+    expect(s106B.unexported).toBeUndefined();
     expect(s106B.frames.length).toBeGreaterThan(300);
     expect(s106B.end.final_score).toEqual({ A: 22, B: 9 });
-    expect(s106B.warnings[0]).toMatch(/Log-only game/);
+
+    for (const expId of ["abl_captain_v1", "abl_comms_v1", "abl_memory_v1"]) {
+      const ov = loadJson(path.join(DATA_DIR, "experiments", `${expId}.json`));
+      const seeds = new Set(ov.games.map((g: { seed: string }) => String(g.seed)));
+      expect([...seeds].sort()).toEqual(["106", "107", "108", "109", "110"]);
+      expect(ov.games.length).toBe(10);
+    }
+
+    const pilotOv = loadJson(path.join(DATA_DIR, "experiments", "pilot_v1.json"));
+    const pilotSeeds = new Set(
+      pilotOv.games.map((g: { seed: string }) => String(g.seed))
+    );
+    expect([...pilotSeeds].sort()).toEqual(["101", "102", "103"]);
+    expect(pilotOv.games.length).toBe(6);
+    expect(pilotOv.study.title).toBe("Control experiment");
   });
 });
 

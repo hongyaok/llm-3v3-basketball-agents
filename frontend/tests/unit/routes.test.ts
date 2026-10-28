@@ -64,15 +64,19 @@ describe("next start production server smoke tests", () => {
     expect(compHtml).toContain("The ablations, side by side.");
   });
 
-  it("serves overview, games, methods, and replay routes including log-only s106_B", async () => {
+  it("serves overview, games, methods, and replay routes for seeds 106-110 and pilot_v1", async () => {
     for (const route of [
       "/experiments/abl_comms_v1",
       "/experiments/abl_captain_v1",
       "/experiments/abl_memory_v1",
+      "/experiments/pilot_v1",
+      "/experiments/pilot_v1/games",
+      "/experiments/pilot_v1/methods",
+      "/experiments/pilot_v1/replay/pilot_v1_s101_A",
       "/experiments/abl_comms_v1/games",
       "/experiments/abl_comms_v1/methods",
       "/experiments/abl_comms_v1/replay",
-      "/experiments/abl_comms_v1/replay/abl_comms_v1_s101_A",
+      "/experiments/abl_comms_v1/replay/abl_comms_v1_s106_A",
       "/experiments/abl_comms_v1/replay/abl_comms_v1_s106_B",
     ]) {
       const res = await fetch(`${BASE_URL}${route}`);
@@ -104,7 +108,9 @@ describe("next start production server smoke tests", () => {
     expect(csvRes.status).toBe(200);
     expect(csvRes.headers.get("content-disposition")).toBe("attachment");
     const csvText = await csvRes.text();
-    expect(csvText).toContain("abl_comms_v1_s101_A");
+    expect(csvText).toContain("abl_comms_v1_s106_A");
+    expect(csvText).not.toContain("abl_comms_v1_s101_A");
+    expect(csvText).not.toContain("abl_comms_v1_s104_A");
 
     const replayRes = await fetch(
       `${BASE_URL}/data/replays/abl_comms_v1/abl_comms_v1_s106_B.json`

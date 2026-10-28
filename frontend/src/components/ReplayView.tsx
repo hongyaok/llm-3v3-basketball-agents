@@ -27,6 +27,7 @@ import {
 } from "@/lib/format";
 import {
   activePossessionId,
+  describeFoulCall,
   describeShotEvent,
   eventActor,
   eventCues,
@@ -589,7 +590,8 @@ export function ReplayView({
 
     const frameDurationMs = (idx: number) => {
       const desc = describeShotEvent(game, idx);
-      if (desc?.kind === "score") return Math.max(speed, 850);
+      const foul = describeFoulCall(game, idx);
+      if (desc?.kind === "score" || foul) return Math.max(speed, 850);
       if (desc?.kind === "miss" || desc?.kind === "rebound") {
         return Math.max(speed, 620);
       }
@@ -830,6 +832,7 @@ export function ReplayView({
   const actor = eventActor(game, f, frameIndex);
   const cues = eventCues(game, f, frameIndex);
   const shotDesc = describeShotEvent(game, frameIndex);
+  const foulDesc = describeFoulCall(game, frameIndex);
 
   const shotArcGeometry = (() => {
     if (!shotDesc) return null;
@@ -1030,27 +1033,46 @@ export function ReplayView({
             </div>
 
             <div id="court" className="court-wrap">
-              {shotDesc ? (
-                <div
-                  id="shot-banner"
-                  key={`shot-banner-${f.event_idx}-${shotDesc.kind}`}
-                  className={`shot-banner ${shotDesc.kind}`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span className="shot-banner-tag">
-                    {shotDesc.kind === "score"
-                      ? `+${shotDesc.points ?? 1} PTS`
-                      : shotDesc.kind === "miss"
-                      ? "MISSED SHOT"
-                      : shotDesc.kind === "turnover"
-                      ? "TURNOVER"
-                      : "REBOUND"}
-                  </span>
-                  <strong className="shot-banner-title">
-                    {shotDesc.message}
-                  </strong>
-                  <small className="shot-banner-sub">{shotDesc.subtext}</small>
+              {shotDesc || foulDesc ? (
+                <div className="court-banners">
+                  {shotDesc ? (
+                    <div
+                      id="shot-banner"
+                      key={`shot-banner-${f.event_idx}-${shotDesc.kind}`}
+                      className={`shot-banner ${shotDesc.kind}`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className="shot-banner-tag">
+                        {shotDesc.kind === "score"
+                          ? `+${shotDesc.points ?? 1} PTS`
+                          : shotDesc.kind === "miss"
+                          ? "MISSED SHOT"
+                          : shotDesc.kind === "turnover"
+                          ? "TURNOVER"
+                          : "REBOUND"}
+                      </span>
+                      <strong className="shot-banner-title">
+                        {shotDesc.message}
+                      </strong>
+                      <small className="shot-banner-sub">{shotDesc.subtext}</small>
+                    </div>
+                  ) : null}
+                  {foulDesc ? (
+                    <div
+                      id="foul-banner"
+                      key={`foul-banner-${f.event_idx}-${foulDesc.foulType}`}
+                      className="shot-banner foul"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className="shot-banner-tag">{foulDesc.tag}</span>
+                      <strong className="shot-banner-title">
+                        {foulDesc.message}
+                      </strong>
+                      <small className="shot-banner-sub">{foulDesc.subtext}</small>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <div id="event-cue" className="event-cue" aria-live="off">

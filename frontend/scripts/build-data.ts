@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { parseCsvText } from "./lib/csv";
+import { INCLUDED_SEEDS } from "./lib/constants";
 import { assertNoNonFiniteNumbers } from "./lib/numbers";
 import { buildExperimentOverview } from "./lib/overview";
 import {
@@ -13,10 +14,9 @@ import { buildGameReplay, buildUnexportedGameSummary } from "./lib/replay";
 import { decodeUtf8, readZipEntries, type ZipEntryMap } from "./lib/zip";
 import type { GameSummaryRow } from "../src/lib/types";
 
-const PIPELINE_VERSION = "1.0.0";
+const PIPELINE_VERSION = "1.1.0";
 const FRONTEND_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_RESULTS_DIR = path.join(FRONTEND_ROOT, "results");
-const FALLBACK_REPO_RESULTS_DIR = path.resolve(FRONTEND_ROOT, "..", "results");
 const OUTPUT_DATA_DIR = path.join(FRONTEND_ROOT, "public", "data");
 
 function sha256File(filePath: string): string {
@@ -41,27 +41,8 @@ function resolveResultsDir(): string {
   ) {
     return DEFAULT_RESULTS_DIR;
   }
-  if (
-    fs.existsSync(FALLBACK_REPO_RESULTS_DIR) &&
-    fs.readdirSync(FALLBACK_REPO_RESULTS_DIR).some((f) => f.endsWith(".zip"))
-  ) {
-    console.log(
-      `Populating ${DEFAULT_RESULTS_DIR} from ${FALLBACK_REPO_RESULTS_DIR}...`
-    );
-    fs.mkdirSync(DEFAULT_RESULTS_DIR, { recursive: true });
-    for (const f of fs
-      .readdirSync(FALLBACK_REPO_RESULTS_DIR)
-      .filter((name) => name.endsWith(".zip"))
-      .sort()) {
-      fs.copyFileSync(
-        path.join(FALLBACK_REPO_RESULTS_DIR, f),
-        path.join(DEFAULT_RESULTS_DIR, f)
-      );
-    }
-    return DEFAULT_RESULTS_DIR;
-  }
   throw new Error(
-    `No results .zip archives found in ${DEFAULT_RESULTS_DIR} (or ${FALLBACK_REPO_RESULTS_DIR})`
+    `No results .zip archives found in ${DEFAULT_RESULTS_DIR}. Run 'npm run sync-results' first.`
   );
 }
 
@@ -98,7 +79,7 @@ export function buildDataFromDirectory(
     .join("\n");
 
   if (fs.existsSync(checksumsPath)) {
-    const expected = fs.readFileSync(checksumsPath, "utf-8").trim();
+    const expected = fs.readFileSync(checksumsPath, "utf-8").replace(/\r\n/g, "\n").trim();
     if (expected !== currentChecksums.trim()) {
       const msg = `CHECKSUMS.sha256 mismatch in ${resultsDir}`;
       if (process.env.CI || process.env.VERCEL) {
@@ -230,6 +211,11 @@ export function buildDataFromDirectory(
 
     const exportedByGameId = new Map<string, Record<string, string>>();
     for (const row of gamesRows) {
+      if (!INCLUDED_SEEDS.has(String(row.seed))) {
+        throw new Error(
+          `Unexpected seed ${row.seed} for ${row.game_id} in ${gamesKey}; allowed seeds: ${[...INCLUDED_SEEDS].join(", ")}`
+        );
+      }
       exportedByGameId.set(row.game_id, row);
       exportedGameIdsAll.add(row.game_id);
     }

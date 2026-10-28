@@ -55,7 +55,7 @@ export function LandingClient({
   }, [activeOverview]);
 
   const [selectedGameId, setSelectedGameId] = useState<string>(
-    closestGame?.id || allReplayGames[0]?.id || "abl_comms_v1_s101_A"
+    closestGame?.id || allReplayGames[0]?.id || "abl_comms_v1_s106_A"
   );
 
   // Keep selectedGameId valid when experiment changes
@@ -66,7 +66,7 @@ export function LandingClient({
     return (
       closestGame?.id ||
       allReplayGames[0]?.id ||
-      `${selectedExpId}_s101_A`
+      `${selectedExpId}_s106_A`
     );
   }, [allReplayGames, closestGame, selectedExpId, selectedGameId]);
 
@@ -94,7 +94,7 @@ export function LandingClient({
     router.push(destinationUrl);
   };
 
-  const totalExportedGames = catalog.dataset?.exported_games ?? 31;
+  const totalExportedGames = catalog.dataset?.exported_games ?? 30;
   const totalReplayLogs =
     totalExportedGames +
     Object.values(overviews).reduce(
@@ -141,18 +141,24 @@ export function LandingClient({
 
             <div className="landing-stats-row">
               <div className="landing-stat">
-                <span className="landing-stat-num mono">3</span>
+                <span className="landing-stat-num mono">
+                  {catalog.experiments.length}
+                </span>
                 <span className="landing-stat-label">
-                  Controlled ablation studies (Teams A vs B, C, D)
+                  3 ablation studies + 1 control experiment (Full vs Full)
                 </span>
               </div>
               <div className="landing-stat">
                 <span className="landing-stat-num mono">
                   {totalExportedGames}
-                  <small>+{totalReplayLogs - totalExportedGames}</small>
+                  {totalReplayLogs > totalExportedGames ? (
+                    <small>+{totalReplayLogs - totalExportedGames}</small>
+                  ) : null}
                 </span>
                 <span className="landing-stat-label">
-                  Exported games + 1 log-only possession replay
+                  {totalReplayLogs > totalExportedGames
+                    ? `Exported games + ${totalReplayLogs - totalExportedGames} log-only possession replay`
+                    : "Exported games (30 ablation + 6 control)"}
                 </span>
               </div>
               <div className="landing-stat">
@@ -196,7 +202,7 @@ export function LandingClient({
                     Compare all 3 ablation experiments side by side
                   </option>
                   <option value="games">
-                    Search &amp; filter the 32-game match library
+                    Search &amp; filter the {totalReplayLogs}-game match library
                   </option>
                   <option value="architecture">
                     Explore the 6-stage system &amp; agent architecture
@@ -290,7 +296,9 @@ export function LandingClient({
           <div className="intent-card">
             <div className="intent-card-top">
               <span className="intent-index mono">01 / COMPARE</span>
-              <span className="intent-tag">3 STUDIES · 31 GAMES</span>
+              <span className="intent-tag">
+                {catalog.experiments.length} STUDIES · {totalExportedGames} GAMES
+              </span>
             </div>
             <h3>Compare all 3 ablations side by side</h3>
             <p>
@@ -375,7 +383,7 @@ export function LandingClient({
                 href="/experiments/abl_comms_v1/replay/abl_comms_v1_s106_B"
                 className="intent-mini-chip"
               >
-                Seed 106_B (Log only) →
+                Seed 106_B →
               </Link>
             </div>
             <div className="intent-quick-links">

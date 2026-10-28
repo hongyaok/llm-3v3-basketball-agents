@@ -265,6 +265,82 @@ export function describeShotEvent(
   return null;
 }
 
+export interface FoulCallDescriptor {
+  foulType: string;
+  offender: string | null;
+  offenderTeam: TeamId | null;
+  fouledPlayer: string | null;
+  rules: string[];
+  tag: string;
+  message: string;
+  subtext: string;
+}
+
+export function describeFoulCall(
+  game: GameReplay,
+  frameIndex: number
+): FoulCallDescriptor | null {
+  if (frameIndex <= 0 || frameIndex >= game.frames.length) return null;
+  const frame = game.frames[frameIndex];
+  const decision = frame.referee?.decision;
+  if (!decision || decision.call !== "FOUL") return null;
+
+  const foulType = decision.foul_type || "FOUL";
+  const offender = decision.offender || null;
+  const fouledPlayer = decision.fouled_player || null;
+  const rules = decision.rule_ids_cited || [];
+  const offenderTeam: TeamId | null =
+    (offender && frame.state.players[offender]?.team) ||
+    (offender?.startsWith("A")
+      ? "A"
+      : offender?.startsWith("B")
+      ? "B"
+      : null);
+
+  const foulLabel = title(foulType).toLowerCase();
+  const tag =
+    foulType === "OFFENSIVE_FOUL"
+      ? "REFEREE · OFFENSIVE FOUL"
+      : foulType === "DEFENSIVE_FOUL"
+      ? "REFEREE · DEFENSIVE FOUL"
+      : "REFEREE · FOUL";
+
+  const message = offender
+    ? `${offender} ${foulLabel}${fouledPlayer ? ` on ${fouledPlayer}` : ""}`
+    : `${title(foulType)}${fouledPlayer ? ` on ${fouledPlayer}` : ""}`;
+
+  const parts: string[] = [];
+  if (offenderTeam && frame.state.team_fouls) {
+    parts.push(`Team ${offenderTeam} fouls: ${frame.state.team_fouls[offenderTeam]}`);
+  }
+  const ftScore = frame.resolution?.scoring_events?.find(
+    (s) => s.source === "FREE_THROW"
+  );
+  if (ftScore) {
+    parts.push(`Free throw +${ftScore.points}`);
+  } else if (frame.resolution?.turnovers?.length) {
+    const newTeam: TeamId =
+      frame.state.offense || (offenderTeam === "A" ? "B" : "A");
+    parts.push(`Possession to Team ${newTeam}`);
+  } else if (frame.state.offense) {
+    parts.push(`Team ${frame.state.offense} retains ball`);
+  }
+  if (rules.length) {
+    parts.push(rules.join(", "));
+  }
+
+  return {
+    foulType,
+    offender,
+    offenderTeam,
+    fouledPlayer,
+    rules,
+    tag,
+    message,
+    subtext: parts.join(" · ") || "Referee foul call",
+  };
+}
+
 export function eventTitle(
   frame: ReplayFrame,
   frames?: ReplayFrame[],

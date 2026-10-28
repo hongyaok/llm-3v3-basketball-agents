@@ -122,7 +122,7 @@
 .event-cue-badge.call { border-color: #adc5ff; }
 .event-cue-badge.action { border-color: #c9dfbf; }
 
-.shot-banner {
+.court-banners {
   position: absolute;
   z-index: 3;
   top: 12px;
@@ -131,9 +131,17 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 6px;
+  max-width: 68%;
+  pointer-events: none;
+}
+
+.shot-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 2px;
   min-width: 190px;
-  max-width: 58%;
   padding: 7px 16px 8px;
   border: 1.5px solid rgba(209, 238, 165, 0.72);
   border-radius: 999px;
@@ -165,6 +173,11 @@
   background: linear-gradient(180deg, rgba(62, 38, 22, 0.95), rgba(28, 23, 18, 0.94));
 }
 
+.shot-banner.foul {
+  border-color: #ffd84d;
+  background: linear-gradient(180deg, rgba(64, 52, 16, 0.96), rgba(32, 27, 14, 0.95));
+}
+
 .shot-banner-tag {
   font-size: 9px;
   font-weight: 700;
@@ -176,6 +189,8 @@
 .shot-banner.miss .shot-banner-tag { color: #f7b2a9; }
 .shot-banner.rebound .shot-banner-tag { color: #a7ede5; }
 .shot-banner.turnover .shot-banner-tag { color: #ffd0ae; }
+.shot-banner.foul .shot-banner-tag { color: #ffe680; }
+.shot-banner.foul .shot-banner-sub { color: #e8dfb5; }
 
 .shot-banner-title {
   font-size: 14px;
@@ -224,11 +239,11 @@
 @keyframes shot-banner-pop {
   0% {
     opacity: 0;
-    transform: translateX(-50%) translateY(-8px) scale(0.92);
+    transform: translateY(-8px) scale(0.92);
   }
   100% {
     opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 

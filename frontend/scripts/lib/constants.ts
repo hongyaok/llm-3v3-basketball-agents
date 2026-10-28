@@ -16,6 +16,7 @@ export const METRIC_ENTRIES: Array<[string, [string, string, boolean]]> = [
 
 export const LABELS: Record<string, string> = {
   A_full: "Full system",
+  A_full_B: "Full system (Side B)",
   B_no_comm: "No communication",
   C_no_captain: "No captain",
   D_read_only: "Read-only memory",
@@ -29,7 +30,26 @@ export const FEATURES: Record<string, string> = {
 
 export const FEATURE_ORDER = ["comms", "captain", "memory_write"] as const;
 
+export const INCLUDED_SEEDS = new Set([
+  "101",
+  "102",
+  "103",
+  "106",
+  "107",
+  "108",
+  "109",
+  "110",
+]);
+
 export const MATCHUP_MEASURES: Record<string, StudyMeasures> = {
+  A_full_B: {
+    primary: ["ppp", "maar", "ccar", "maur", "cssr"],
+    context: [],
+    adaptation: ["ppp", "maur", "cssr"],
+    note:
+      "Mirror control experiment: both physical teams (A and B) run the Full System " +
+      "configuration across paired first-possession seeds.",
+  },
   B_no_comm: {
     primary: ["ppp", "maar"],
     context: ["ccar"],

@@ -219,10 +219,16 @@ export function buildGameReplay(options: BuildReplayOptions): GameReplay {
     }));
   }
 
+  const rawConditions = start.team_conditions as { A: string; B: string };
+  const conditions =
+    rawConditions.A === rawConditions.B
+      ? { A: rawConditions.A, B: `${rawConditions.B}_B` }
+      : rawConditions;
+
   const replay: GameReplay = {
     id: gameId,
     seed: start.seed as number | string,
-    conditions: start.team_conditions as { A: string; B: string },
+    conditions,
     coordination: start.coordination as GameReplay["coordination"],
     first_possession: start.first_possession as string,
     court,
