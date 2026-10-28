@@ -41,6 +41,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# archive/ is dead code kept for provenance; it is not maintained or linted.
+extend-exclude = ["archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -51,11 +53,4 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "live: manual tests against live OpenRouter API",
-]
-
-[dependency-groups]
-dev = [
-    "pytest>=9.1.1",
-    "ruff>=0.3.0",
-    "hypothesis>=6.0.0",
 ]

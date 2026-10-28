@@ -217,16 +217,21 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# simulation runs
+# simulation runs (new experiments write here; see `bball run-experiment --out`)
 runs/
+!runs/.gitkeep
+
+# Archived run artifacts. The historical logs stay on disk locally but are not
+# part of the versioned set: the compressed archives in results/ are the source
+# of truth (see archive/README.md).
+archive/runs/pre_ws7/
+archive/runs/pre_ws7_smoke/
+archive/runs/harness/
+archive/runs/*.jsonl
+archive/runs/*.ckpt.json
+
 # Finder metadata is never part of an experiment artifact.
 **/.DS_Store
-# Keep the reproducible communication-ablation artifact set under version control.
-!runs/
-!runs/abl_comms_v1_results/
-!runs/abl_comms_v1_results/**
-!runs/abl_comms_v1_runs/
-!runs/abl_comms_v1_runs/**
 
 # Third-party reference clone (dev-only, see adopt_basketworld.md)
 third_party/
